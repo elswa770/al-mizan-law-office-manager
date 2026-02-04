@@ -10,10 +10,17 @@
   to = "/index.html"
   status = 200
 
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+
 [context.production.environment]
-  VITE_SUPABASE_URL = "https://your-project-id.supabase.co"
-  VITE_SUPABASE_ANON_KEY = "your-anon-key-here"
+  VITE_SUPABASE_URL = "https://mlbwhlocvbdjfwjnwscs.supabase.co"
+  VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sYndobG9jdmJkamZ3am53c2NzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMzAzMTQsImV4cCI6MjA4NTgwNjMxNH0.QH9G22byPWvtPWa_WxmxHQPWDHmgDRiGnnrOJLlTOnU"
 
 [context.deploy-preview.environment]
-  VITE_SUPABASE_URL = "https://your-project-id.supabase.co"
-  VITE_SUPABASE_ANON_KEY = "your-anon-key-here"
+  VITE_SUPABASE_URL = "https://mlbwhlocvbdjfwjnwscs.supabase.co"
+  VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sYndobG9jdmJkamZ3am53c2NzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyMzAzMTQsImV4cCI6MjA4NTgwNjMxNH0.QH9G22byPWvtPWa_WxmxHQPWDHmgDRiGnnrOJLlTOnU"
