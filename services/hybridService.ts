@@ -236,31 +236,52 @@ export class HybridDataService {
   // ===== SYNC FUNCTIONS =====
   
   private static async syncCases(localCases: Case[], remoteCases: any[]): Promise<void> {
+    console.log('🔄 Syncing cases:', localCases.length, 'local vs', remoteCases.length, 'remote');
+    
     for (const remoteCase of remoteCases) {
       const localCase = localCases.find(c => c.id === remoteCase.id);
       const convertedCase = this.convertRemoteCaseToLocal(remoteCase);
       
       if (!localCase) {
         // إضافة حالة غير موجودة محلياً
+        console.log('➕ Adding new case from remote:', remoteCase.id);
         await db.cases.add(convertedCase);
-      } else if (new Date(remoteCase.updated_at) > new Date(localCase.updateDate || localCase.openDate)) {
-        // تحديث الحالة المحلية إذا كانت السحابية أحدث
-        const { id, ...updateData } = convertedCase;
-        await db.cases.update(localCase.id, updateData);
+      } else {
+        // مقارنة التواريخ بشكل صحيح
+        const remoteDate = new Date(remoteCase.updated_at || remoteCase.created_at);
+        const localDate = new Date(localCase.updateDate || localCase.openDate || 0);
+        
+        if (remoteDate > localDate) {
+          // تحديث الحالة المحلية إذا كانت السحابية أحدث
+          console.log('🔄 Updating local case from remote:', remoteCase.id);
+          const { id, ...updateData } = convertedCase;
+          await db.cases.update(localCase.id, updateData);
+        }
       }
     }
   }
 
   private static async syncClients(localClients: Client[], remoteClients: any[]): Promise<void> {
+    console.log('🔄 Syncing clients:', localClients.length, 'local vs', remoteClients.length, 'remote');
+    
     for (const remoteClient of remoteClients) {
       const localClient = localClients.find(c => c.id === remoteClient.id);
       const convertedClient = this.convertRemoteClientToLocal(remoteClient);
       
       if (!localClient) {
+        console.log('➕ Adding new client from remote:', remoteClient.id);
         await db.clients.add(convertedClient);
-      } else if (new Date(remoteClient.updated_at) > new Date('')) {
-        const { id, ...updateData } = convertedClient;
-        await db.clients.update(localClient.id, updateData);
+      } else {
+        // مقارنة التواريخ بشكل صحيح - Client ليس لديه updateDate أو addDate
+        const remoteDate = new Date(remoteClient.updated_at || remoteClient.created_at);
+        const localDate = new Date(0); // نستخدم تاريخ افتراضي للعميل المحلي
+        
+        // إذا كان العميل البعيد أحدث، نحدث المحلي
+        if (remoteDate > localDate) {
+          console.log('🔄 Updating local client from remote:', remoteClient.id);
+          const { id, ...updateData } = convertedClient;
+          await db.clients.update(localClient.id, updateData);
+        }
       }
     }
   }

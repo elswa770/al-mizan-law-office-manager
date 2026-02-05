@@ -175,11 +175,45 @@ function App() {
   useEffect(() => {
     const syncInterval = setInterval(() => {
       if (HybridDataService.isOnline()) {
+        console.log('🔄 Starting periodic sync...');
         HybridDataService.syncAllData();
       }
     }, 5 * 60 * 1000); // Sync every 5 minutes
 
     return () => clearInterval(syncInterval);
+  }, []);
+
+  // --- Initial Data Load Effect ---
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (HybridDataService.isOnline()) {
+        console.log('🚀 Loading initial data from remote...');
+        try {
+          await HybridDataService.syncAllData();
+          
+          // تحديث البيانات في الـ state بعد المزامنة
+          const [cases, clients, hearings, tasks, users] = await Promise.all([
+            HybridDataService.getAllCases(),
+            HybridDataService.getAllClients(),
+            HybridDataService.getAllHearings(),
+            HybridDataService.getAllTasks(),
+            HybridDataService.getAllUsers()
+          ]);
+          
+          setCases(cases);
+          setClients(clients);
+          setHearings(hearings);
+          setTasks(tasks);
+          setUsers(users);
+          
+          console.log('✅ Initial data loaded successfully');
+        } catch (error) {
+          console.error('❌ Error loading initial data:', error);
+        }
+      }
+    };
+    
+    loadInitialData();
   }, []);
 
   // --- Page State Management with Persistence ---
