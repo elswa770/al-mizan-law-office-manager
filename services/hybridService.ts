@@ -8,11 +8,16 @@ export class HybridDataService {
   // إضافة قضية - حفظ محلي وسحابي
   static async saveCase(caseData: Case): Promise<string> {
     try {
+      console.log('💾 Saving case:', caseData.title);
+      
       // 1. حفظ محلي أولاً
       const localId = await db.cases.add(caseData);
+      console.log('✅ Saved locally with ID:', localId);
       
       // 2. حفظ في Supabase للاستمرارية
       const remoteData = this.convertLocalCaseToRemote(caseData);
+      console.log('🌐 Converting to remote data...');
+      
       const { data, error } = await supabase
         .from('cases')
         .insert({
@@ -23,14 +28,15 @@ export class HybridDataService {
         .single();
 
       if (error) {
-        console.error('Error saving to Supabase:', error);
+        console.error('❌ Error saving to Supabase:', error);
         // نرجع الـ ID المحلي إذا فشل السحابي
         return localId.toString();
       }
 
+      console.log('✅ Saved to Supabase with ID:', data.id);
       return data.id;
     } catch (error) {
-      console.error('Error in saveCase:', error);
+      console.error('❌ Error in saveCase:', error);
       throw error;
     }
   }
@@ -331,12 +337,20 @@ export class HybridDataService {
       client_id: localCase.clientId,
       client_name: localCase.clientName,
       client_role: localCase.clientRole,
+      opponents: localCase.opponents,
       description: localCase.description,
       open_date: localCase.openDate,
-      update_date: localCase.updateDate,
+      update_date: localCase.updateDate || new Date().toISOString(),
       responsible_lawyer: localCase.responsibleLawyer,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      finance: localCase.finance,
+      notes: localCase.notes,
+      strategy: localCase.strategy,
+      documents: localCase.documents,
+      memos: localCase.memos,
+      rulings: localCase.rulings,
+      ai_chat_history: localCase.aiChatHistory,
+      created_at: localCase.openDate || new Date().toISOString(),
+      updated_at: localCase.updateDate || new Date().toISOString()
     };
   }
 
