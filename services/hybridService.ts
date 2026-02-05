@@ -18,12 +18,14 @@ export class HybridDataService {
       const remoteData = this.convertLocalCaseToRemote(caseData);
       console.log('🌐 Converting to remote data...');
       
+      // إصلاح client_id ليكون UUID صالح أو null
+      if (remoteData.client_id && !this.isValidUUID(remoteData.client_id)) {
+        remoteData.client_id = null;
+      }
+      
       const { data, error } = await supabase
         .from('cases')
-        .insert({
-          ...remoteData,
-          id: localId.toString()
-        })
+        .insert(remoteData)
         .select()
         .single();
 
@@ -39,6 +41,11 @@ export class HybridDataService {
       console.error('❌ Error in saveCase:', error);
       throw error;
     }
+  }
+
+  private static isValidUUID(uuid: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
   }
 
   // جلب جميع القضايا - محلي أولاً ثم سحابي
@@ -684,18 +691,21 @@ export class HybridDataService {
     if (!this.isOnline()) return;
     
     try {
+      console.log('🔄 Starting full data sync...');
+      
+      // مزامنة الجداول الموجودة فقط
       await Promise.all([
         this.getAllCases(),
         this.getAllClients(),
         this.getAllHearings(),
         this.getAllTasks(),
-        this.getAllUsers(),
-        this.getAllActivities()
+        this.getAllUsers()
+        // تم إزالة getAllActivities لأن الجدول غير موجود
       ]);
       
-      console.log('All data synced successfully (including Users & Activities)');
+      console.log('✅ All data synced successfully (excluding activities)');
     } catch (error) {
-      console.error('Error syncing all data:', error);
+      console.error('❌ Error syncing all data:', error);
     }
   }
 
