@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      base: './',
+      base: mode === 'production' ? '/al-mizan-law-office-manager/' : './',
       build: {
         outDir: 'dist',
         assetsDir: 'assets',
