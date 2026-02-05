@@ -1,11 +1,20 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+const apiKey = process.env.API_KEY || import.meta.env.GEMINI_API_KEY || '';
+
+// Only initialize if API key is available
+let ai: GoogleGenAI | null = null;
+if (apiKey) {
+  ai = new GoogleGenAI({ apiKey });
+}
 
 export const askLegalAssistant = async (prompt: string, context?: string) => {
   try {
+    if (!ai || !apiKey) {
+      throw new Error("المساعد الذكي غير متوفر حالياً. يرجى تفعيل Gemini API Key.");
+    }
+
     // Upgraded to PRO model for complex legal reasoning
     const model = 'gemini-3-pro-preview';
     
@@ -54,6 +63,10 @@ export const askLegalAssistant = async (prompt: string, context?: string) => {
 // --- New Function: Search Legal References Online ---
 export const searchLegalReferences = async (query: string) => {
   try {
+    if (!ai || !apiKey) {
+      throw new Error("البحث القانوني غير متوفر حالياً. يرجى تفعيل Gemini API Key.");
+    }
+
     const model = 'gemini-3-flash-preview'; // Flash is fine for search
 
     // Define strict schema for legal references to ensure consistent UI rendering
@@ -114,6 +127,10 @@ export const searchLegalReferences = async (query: string) => {
 // --- New Function: Fetch Detailed Content for PDF ---
 export const fetchDetailedReferenceContent = async (title: string, description: string) => {
   try {
+    if (!ai || !apiKey) {
+      throw new Error("جلب المحتوى التفصيلي غير متوفر حالياً. يرجى تفعيل Gemini API Key.");
+    }
+
     const model = 'gemini-3-pro-preview'; // Pro for better extraction
     const prompt = `
       أنت تقوم بمهمة "استخراج النص الكامل" لمرجع قانوني مصري.
