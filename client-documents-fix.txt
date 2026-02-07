@@ -1,0 +1,36 @@
+{/* Legacy Documents */}
+           {[...(client.documents || []), ...(client.poaFiles || [])].map(f => ({
+              id: f.id,
+              type: 'poa',
+              name: f.name,
+              url: f.url,
+              uploadDate: f.uploadDate,
+              expiryDate: client.poaExpiry
+           }) as ClientDocument)].map((doc, i) => (
+              <div key={i} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-start justify-between group">
+                 <div className="flex items-start gap-3">
+                    <div className="bg-slate-50 dark:bg-slate-700 p-2.5 rounded-lg text-slate-500 dark:text-slate-400">
+                       <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                       <p className="font-bold text-slate-800 dark:text-white text-sm">{doc.name}</p>
+                       <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">
+                             {doc.type === 'poa' ? 'توكيل' : doc.type === 'national_id' ? 'بطاقة هوية' : 'مستند'}
+                          </span>
+                          {doc.expiryDate && (
+                             <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 ${new Date(doc.expiryDate) < new Date() ? 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400'}`}>
+                                {new Date(doc.expiryDate) < new Date() ? 'منتهي' : 'ساري'}
+                             </span>
+                          )}
+                          {doc.issueDate && doc.type === 'poa' && (
+                             <span className="text-[10px] text-slate-400">إصدار: {doc.issueDate}</span>
+                          )}
+                       </div>
+                    </div>
+                 </div>
+                 <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-400 hover:text-primary-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg">
+                    <Eye className="w-4 h-4" />
+                 </a>
+              </div>
+           ))}

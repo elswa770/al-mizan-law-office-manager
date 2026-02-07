@@ -15,12 +15,14 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import LegalReferences from './pages/LegalReferences'; // Import New Page
 import { db } from './services/database';
-import MigrationService from './services/migrationService';
-import AuthService from './services/authService';
-import { HybridDataService } from './services/hybridService';
-import { SupabaseAuthService } from './services/supabaseAuth';
+import { MigrationService } from './services/migrationService';
 import { LocalStorageBackup } from './services/localStorageBackup';
+import AuthService from './services/authService';
+import { NewHybridDataService } from './services/newHybridService';
+import { FirebaseDataService } from './services/firebaseService';
+import { SupabaseAuthService } from './services/supabaseAuth';
 import { supabase } from './services/supabase';
+import { configureFirestore } from './services/firebase';
 import { Hearing, Case, Client, HearingStatus, Task, ActivityLog, AppUser, PermissionLevel, LegalReference } from './types';
 import { FileText, Wallet, BarChart3, Settings as SettingsIcon, ShieldAlert, CheckCircle } from 'lucide-react';
 
@@ -55,12 +57,26 @@ function App() {
     }
   }, [theme]);
 
-  // --- Database Initialization Effect ---
+
+
+// --- Database Initialization Effect ---
   useEffect(() => {
     const initializeDatabase = async () => {
       try {
         setIsLoading(true);
         console.log('🔄 Starting database initialization...');
+        
+        // Clear existing localStorage data for Firebase-only mode
+        LocalStorageBackup.clearAllExistingData();
+        console.log('🗑️ LocalStorage cleared - Using Firebase only mode');
+        
+        // Configure Firestore settings
+        try {
+          configureFirestore();
+          console.log('✅ Firestore configured');
+        } catch (error) {
+          console.warn('⚠️ Firestore configuration failed:', error);
+        }
         
         // Initialize local database for offline support
         await MigrationService.initializeDatabase();
@@ -116,28 +132,59 @@ function App() {
         setUsers(finalUsers);
         setReferences(localReferences);
         
-        console.log('🔄 Attempting to sync with Supabase...');
+        console.log('🔄 Attempting to sync with Firebase...');
         
-        // Try to sync with Supabase (this will update the state if successful)
+        // Try to sync with Firebase (this will update the state if successful)
         try {
           const [syncedCases, syncedClients, syncedHearings, syncedTasks, syncedActivities, syncedUsers] = await Promise.all([
-            HybridDataService.getAllCases(),
-            HybridDataService.getAllClients(),
-            HybridDataService.getAllHearings(),
-            HybridDataService.getAllTasks(),
-            HybridDataService.getAllActivities(),
-            HybridDataService.getAllUsers()
+            NewHybridDataService.getAllCases(),
+            NewHybridDataService.getAllClients(),
+            NewHybridDataService.getAllHearings(),
+            NewHybridDataService.getAllTasks(),
+            NewHybridDataService.getAllActivities(),
+            NewHybridDataService.getAllUsers()
           ]);
           
-          // Update with synced data if different
-          if (syncedUsers.length !== localUsers.length) {
+          // Update all synced data if different
+          if (syncedCases.length !== localCases.length || 
+              JSON.stringify(syncedCases) !== JSON.stringify(localCases)) {
+            console.log('🔄 Cases data changed after sync, updating...');
+            setCases(syncedCases);
+          }
+          
+          if (syncedClients.length !== localClients.length || 
+              JSON.stringify(syncedClients) !== JSON.stringify(localClients)) {
+            console.log('🔄 Clients data changed after sync, updating...');
+            setClients(syncedClients);
+          }
+          
+          if (syncedHearings.length !== localHearings.length || 
+              JSON.stringify(syncedHearings) !== JSON.stringify(localHearings)) {
+            console.log('🔄 Hearings data changed after sync, updating...');
+            setHearings(syncedHearings);
+          }
+          
+          if (syncedTasks.length !== localTasks.length || 
+              JSON.stringify(syncedTasks) !== JSON.stringify(localTasks)) {
+            console.log('🔄 Tasks data changed after sync, updating...');
+            setTasks(syncedTasks);
+          }
+          
+          if (syncedActivities.length !== localActivities.length || 
+              JSON.stringify(syncedActivities) !== JSON.stringify(localActivities)) {
+            console.log('🔄 Activities data changed after sync, updating...');
+            setActivities(syncedActivities);
+          }
+          
+          if (syncedUsers.length !== localUsers.length || 
+              JSON.stringify(syncedUsers) !== JSON.stringify(localUsers)) {
             console.log('🔄 Users data changed after sync, updating...');
             setUsers(syncedUsers);
           }
           
-          console.log('✅ Supabase sync completed successfully');
+          console.log('✅ Firebase sync completed successfully');
         } catch (syncError) {
-          console.log('⚠️ Supabase sync failed, using local data only:', syncError);
+          console.log('⚠️ Firebase sync failed, using local data only:', syncError);
         }
         
         console.log('🎉 Database initialization completed');
@@ -155,7 +202,7 @@ function App() {
   useEffect(() => {
     const handleOnline = () => {
       console.log('Back online - syncing data...');
-      HybridDataService.syncAllData();
+      NewHybridDataService.syncAllData();
     };
 
     const handleOffline = () => {
@@ -174,9 +221,9 @@ function App() {
   // --- Periodic Sync Effect ---
   useEffect(() => {
     const syncInterval = setInterval(() => {
-      if (HybridDataService.isOnline()) {
+      if (NewHybridDataService.isOnline()) {
         console.log('🔄 Starting periodic sync...');
-        HybridDataService.syncAllData();
+        NewHybridDataService.syncAllData();
       }
     }, 5 * 60 * 1000); // Sync every 5 minutes
 
@@ -186,18 +233,18 @@ function App() {
   // --- Initial Data Load Effect ---
   useEffect(() => {
     const loadInitialData = async () => {
-      if (HybridDataService.isOnline()) {
+      if (NewHybridDataService.isOnline()) {
         console.log('🚀 Loading initial data from remote...');
         try {
-          await HybridDataService.syncAllData();
+          await NewHybridDataService.syncAllData();
           
           // تحديث البيانات في الـ state بعد المزامنة
           const [cases, clients, hearings, tasks, users] = await Promise.all([
-            HybridDataService.getAllCases(),
-            HybridDataService.getAllClients(),
-            HybridDataService.getAllHearings(),
-            HybridDataService.getAllTasks(),
-            HybridDataService.getAllUsers()
+            NewHybridDataService.getAllCases(),
+            NewHybridDataService.getAllClients(),
+            NewHybridDataService.getAllHearings(),
+            NewHybridDataService.getAllTasks(),
+            NewHybridDataService.getAllUsers()
           ]);
           
           setCases(cases);
@@ -404,40 +451,100 @@ function App() {
   const handleCaseClick = (caseId: string) => {
     setSelectedCaseId(caseId);
     setCurrentPage('case-details');
+    // Refresh data when navigating to case details
+    if (NewHybridDataService.isOnline()) {
+      NewHybridDataService.syncAllData().then(() => {
+        // Reload data into state after sync
+        NewHybridDataService.getAllCases().then(cases => setCases(cases));
+        NewHybridDataService.getAllClients().then(clients => setClients(clients));
+        NewHybridDataService.getAllHearings().then(hearings => setHearings(hearings));
+        NewHybridDataService.getAllTasks().then(tasks => setTasks(tasks));
+      });
+    }
   };
 
   const handleBackToCases = () => {
     setSelectedCaseId(null);
     setCurrentPage('cases'); 
+    // Refresh data when navigating to cases
+    if (NewHybridDataService.isOnline()) {
+      NewHybridDataService.syncAllData().then(() => {
+        // Reload data into state after sync
+        NewHybridDataService.getAllCases().then(cases => setCases(cases));
+        NewHybridDataService.getAllClients().then(clients => setClients(clients));
+        NewHybridDataService.getAllHearings().then(hearings => setHearings(hearings));
+        NewHybridDataService.getAllTasks().then(tasks => setTasks(tasks));
+      });
+    }
   };
 
   const handleClientClick = (clientId: string) => {
     setSelectedClientId(clientId);
     setCurrentPage('client-details');
+    // Refresh data when navigating to client details
+    if (NewHybridDataService.isOnline()) {
+      NewHybridDataService.syncAllData().then(() => {
+        // Reload data into state after sync
+        NewHybridDataService.getAllCases().then(cases => setCases(cases));
+        NewHybridDataService.getAllClients().then(clients => setClients(clients));
+        NewHybridDataService.getAllHearings().then(hearings => setHearings(hearings));
+        NewHybridDataService.getAllTasks().then(tasks => setTasks(tasks));
+      });
+    }
   };
 
   const handleBackToClients = () => {
     setSelectedClientId(null);
     setCurrentPage('clients');
+    // Refresh data when navigating to clients
+    if (NewHybridDataService.isOnline()) {
+      NewHybridDataService.syncAllData().then(() => {
+        // Reload data into state after sync
+        NewHybridDataService.getAllCases().then(cases => setCases(cases));
+        NewHybridDataService.getAllClients().then(clients => setClients(clients));
+        NewHybridDataService.getAllHearings().then(hearings => setHearings(hearings));
+        NewHybridDataService.getAllTasks().then(tasks => setTasks(tasks));
+      });
+    }
   };
 
   const handleAddCase = async (newCase: Case) => {
   try {
-    // Save using Hybrid Service (local + Supabase)
-    const caseId = await HybridDataService.saveCase(newCase);
+    console.log('🔄 Adding new case:', newCase.title);
+    
+    // Save using Hybrid Service (local + Firebase)
+    const caseId = await NewHybridDataService.saveCase(newCase);
     const savedCase = { ...newCase, id: caseId };
-    setCases(prev => [savedCase, ...prev]);
+    
+    // Add to state only once
+    setCases(prev => {
+      // Check if case already exists to prevent duplicates
+      if (prev.find(c => c.id === caseId)) {
+        console.log('⚠️ Case already exists in state, skipping:', caseId);
+        return prev;
+      }
+      console.log('✅ Adding case to state:', caseId);
+      return [savedCase, ...prev];
+    });
   } catch (error) {
-    console.error('Error adding case:', error);
+    console.error('❌ Error adding case:', error);
     // Fallback to local only
-    setCases(prev => [newCase, ...prev]);
+    setCases(prev => {
+      // Generate temporary ID for local case
+      const tempId = `temp-${Date.now()}`;
+      const tempCase = { ...newCase, id: tempId };
+      if (prev.find(c => c.id === tempId)) {
+        return prev;
+      }
+      return [tempCase, ...prev];
+    });
   }
 };
 
 const handleUpdateCase = async (updatedCase: Case) => {
   try {
     // Update using Hybrid Service
-    await HybridDataService.updateCase(updatedCase.id, updatedCase);
+    await NewHybridDataService.updateCase(updatedCase.id, updatedCase);
     setCases(prev => prev.map(c => c.id === updatedCase.id ? updatedCase : c));
   } catch (error) {
     console.error('Error updating case:', error);
@@ -449,7 +556,7 @@ const handleUpdateCase = async (updatedCase: Case) => {
 const handleAddHearing = async (newHearing: Hearing) => {
   try {
     // Save using Hybrid Service
-    const hearingId = await HybridDataService.saveHearing(newHearing);
+    const hearingId = await NewHybridDataService.saveHearing(newHearing);
     const savedHearing = { ...newHearing, id: hearingId };
     setHearings(prev => [savedHearing, ...prev]);
   } catch (error) {
@@ -465,20 +572,114 @@ const handleAddHearing = async (newHearing: Hearing) => {
 
   // Client Handlers
   const handleAddClient = async (newClient: Client) => {
-    try {
-      // Save using Hybrid Service
-      const clientId = await HybridDataService.saveClient(newClient);
-      const savedClient = { ...newClient, id: clientId };
-      setClients(prev => [savedClient, ...prev]);
-    } catch (error) {
-      console.error('Error adding client:', error);
-      // Fallback to local only
-      setClients(prev => [newClient, ...prev]);
-    }
-  };
+  try {
+    console.log('🔄 Adding new client:', newClient.name);
+    
+    // Save using Hybrid Service
+    const clientId = await NewHybridDataService.saveClient(newClient);
+    const savedClient = { ...newClient, id: clientId };
+    
+    // Add to state only once
+    setClients(prev => {
+      // Check if client already exists to prevent duplicates
+      if (prev.find(c => c.id === clientId)) {
+        console.log('⚠️ Client already exists in state, skipping:', clientId);
+        return prev;
+      }
+      console.log('✅ Adding client to state:', clientId);
+      return [savedClient, ...prev];
+    });
+  } catch (error) {
+    console.error('❌ Error adding client:', error);
+    // Fallback to local only
+    setClients(prev => {
+      // Generate temporary ID for local client
+      const tempId = `temp-${Date.now()}`;
+      const tempClient = { ...newClient, id: tempId };
+      if (prev.find(c => c.id === tempId)) {
+        return prev;
+      }
+      return [tempClient, ...prev];
+    });
+  }
+};
 
   const handleUpdateClient = (updatedClient: Client) => {
     setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
+  };
+
+  const handleDeleteCase = async (caseId: string) => {
+    try {
+      console.log('🔄 Starting to delete case:', caseId);
+      
+      // Check if case exists
+      const caseToDelete = cases.find(c => c.id === caseId);
+      if (!caseToDelete) {
+        console.error('❌ Case not found:', caseId);
+        return;
+      }
+      
+      // Delete from Firebase
+      await FirebaseDataService.deleteCase(caseId);
+      console.log('✅ Case deleted from Firebase:', caseId);
+      
+      // Delete from local database
+      await db.cases.delete(caseId);
+      console.log('✅ Case deleted from local database:', caseId);
+      
+      // Update state
+      setCases(prev => prev.filter(c => c.id !== caseId));
+      setHearings(prev => prev.filter(h => h.caseId !== caseId));
+      
+      // Go back to cases list
+      handleBackToCases();
+      
+      console.log('✅ Case deletion completed:', caseId);
+    } catch (error) {
+      console.error('❌ Error deleting case:', error);
+      // Fallback: remove from state only
+      setCases(prev => prev.filter(c => c.id !== caseId));
+      setHearings(prev => prev.filter(h => h.caseId !== caseId));
+      handleBackToCases();
+    }
+  };
+
+  const handleDeleteClient = async (clientId: string) => {
+    try {
+      console.log('🔄 Starting to delete client:', clientId);
+      
+      // التحقق من وجود قضايا مرتبطة بالموكل
+      const clientCases = cases.filter(c => c.clientId === clientId);
+      
+      if (clientCases.length > 0) {
+        // عرض رسالة تحذير مع تفاصيل القضايا المرتبطة
+        const caseDetails = clientCases.map(c => `• ${c.title} (${c.caseNumber}/${c.year})`).join('\n');
+        const confirmed = window.confirm(
+          `⚠️ لا يمكن حذف هذا الموكل لأنه مرتبط بالقضايا التالية:\n\n${caseDetails}\n\n` +
+          `عدد القضايا: ${clientCases.length}\n\n` +
+          `يجب حذف القضايا أولاً أو نقلها إلى موكل آخر قبل حذف الموكل.\n\n` +
+          `هل تريد عرض القضايا المرتبطة؟`
+        );
+        
+        if (confirmed) {
+          // الانتقال إلى صفحة القضايا مع فلترة للموكل
+          setCurrentPage('cases');
+        }
+        return;
+      }
+      
+      // تأكيد الحذف (فقط إذا لم يكن هناك قضايا مرتبطة)
+      const confirmed = window.confirm('هل أنت متأكد من حذف هذا الموكل؟ لا يمكن التراجع عن هذا الإجراء.');
+      if (!confirmed) return;
+      
+      // حذف باستخدام Hybrid Service
+      await NewHybridDataService.deleteClient(clientId);
+      setClients(prev => prev.filter(c => c.id !== clientId));
+      console.log('✅ Client deleted successfully');
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      alert('حدث خطأ أثناء حذف الموكل. يرجى المحاولة مرة أخرى.');
+    }
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
@@ -527,7 +728,7 @@ const handleAddHearing = async (newHearing: Hearing) => {
       console.log('🔄 Starting to save user:', newUser.name);
       
       // حفظ باستخدام Hybrid Service (محلي + Supabase)
-      const userId = await HybridDataService.saveUser(newUser);
+      const userId = await NewHybridDataService.saveUser(newUser);
       const savedUser = { ...newUser, id: userId };
       
       console.log('✅ User saved to Hybrid Service:', savedUser);
@@ -576,7 +777,7 @@ const handleAddHearing = async (newHearing: Hearing) => {
   const handleUpdateUser = async (updatedUser: AppUser) => {
     try {
       // تحديث باستخدام Hybrid Service (محلي + Supabase)
-      await HybridDataService.updateUser(updatedUser.id, updatedUser);
+      await NewHybridDataService.updateUser(updatedUser.id, updatedUser);
       setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
       console.log('User updated successfully:', updatedUser.name);
     } catch (error) {
@@ -597,7 +798,7 @@ const handleAddHearing = async (newHearing: Hearing) => {
     console.log('✅ User deleted from IndexedDB');
     
     // 2. Delete from Supabase (if online)
-    if (HybridDataService.isOnline()) {
+    if (NewHybridDataService.isOnline()) {
       try {
         const { error } = await supabase
           .from('users')
@@ -887,6 +1088,7 @@ const handleAddHearing = async (newHearing: Hearing) => {
             onUpdateCase={!readOnly ? handleUpdateCase : undefined}
             onUpdateHearing={!readOnly ? handleUpdateHearing : undefined}
             onClientClick={handleClientClick}
+            onDeleteCase={!readOnly ? handleDeleteCase : undefined}
             // case-details might need its own readOnly prop if granular, but here inheriting 'cases' module perm
           />
         );
@@ -897,6 +1099,7 @@ const handleAddHearing = async (newHearing: Hearing) => {
             onClientClick={handleClientClick} 
             onAddClient={!readOnly ? handleAddClient : undefined}
             onUpdateClient={!readOnly ? handleUpdateClient : undefined}
+            onDeleteClient={!readOnly ? handleDeleteClient : undefined}
             cases={cases}
             hearings={hearings}
             readOnly={readOnly}
@@ -913,6 +1116,7 @@ const handleAddHearing = async (newHearing: Hearing) => {
              onBack={handleBackToClients}
              onCaseClick={handleCaseClick}
              onUpdateClient={!readOnly ? handleUpdateClient : undefined}
+             onDeleteClient={!readOnly ? handleDeleteClient : undefined}
            />
         );
       case 'hearings':
@@ -1041,7 +1245,19 @@ const handleAddHearing = async (newHearing: Hearing) => {
   return (
     <Layout 
       activePage={currentPage} 
-      onNavigate={setCurrentPage}
+      onNavigate={(page) => {
+        setCurrentPage(page);
+        // Refresh data when navigating to any page
+        if (NewHybridDataService.isOnline()) {
+          NewHybridDataService.syncAllData().then(() => {
+            // Reload data into state after sync
+            NewHybridDataService.getAllCases().then(cases => setCases(cases));
+            NewHybridDataService.getAllClients().then(clients => setClients(clients));
+            NewHybridDataService.getAllHearings().then(hearings => setHearings(hearings));
+            NewHybridDataService.getAllTasks().then(tasks => setTasks(tasks));
+          });
+        }
+      }}
       notifications={notifications}
       onNotificationClick={handleNotificationClick}
       currentUser={currentUser}

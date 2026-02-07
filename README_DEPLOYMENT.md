@@ -23,7 +23,7 @@ git init
 git add .
 git commit -m "Initial commit"
 git branch -M main
-git remote add origin https://github.com/username/al-mizan-law-office-manager.git
+git remote add origin https://github.com/elswa770/al-mizan-law-office-manager.git
 git push -u origin main
 ```
 

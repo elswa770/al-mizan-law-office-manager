@@ -30,7 +30,8 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
     type: 'payment' as 'payment' | 'expense',
     description: '',
     method: 'cash' as PaymentMethod,
-    category: ''
+    category: '',
+    date: new Date().toISOString().split('T')[0] // Add date field with today's date
   });
 
   // Handle Tab Logic based on Permissions
@@ -116,47 +117,10 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
     });
   }, [cases, clients, searchTerm, filterStatus]);
 
-  // 3. Expenses List (Aggregated)
-  const expensesList = useMemo(() => {
-    const list: any[] = [];
-    
-    // A. Hearing Expenses
-    hearings.forEach(h => {
-      if (h.expenses && h.expenses.amount > 0) {
-        const c = cases.find(x => x.id === h.caseId);
-        list.push({
-          id: `h-${h.id}`,
-          date: h.date,
-          category: 'مصروفات جلسة',
-          description: h.expenses.description || 'مصروفات متنوعة',
-          amount: h.expenses.amount,
-          caseTitle: c?.title,
-          clientName: clients.find(cl => cl.id === c?.clientId)?.name,
-          paidBy: h.expenses.paidBy === 'lawyer' ? 'المكتب' : 'الموكل'
-        });
-      }
-    });
-
-    // B. Case Admin Expenses (from Transactions Log if available, else fallback)
-    cases.forEach(c => {
-      if (c.finance?.history) {
-         c.finance.history.filter(t => t.type === 'expense').forEach(t => {
-            list.push({
-               id: t.id,
-               date: t.date,
-               category: t.category || 'إدارية',
-               description: t.description || 'مصروفات',
-               amount: t.amount,
-               caseTitle: c.title,
-               clientName: clients.find(cl => cl.id === c.clientId)?.name,
-               paidBy: 'المكتب'
-            });
-         });
-      }
-    });
-
-    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [cases, hearings, clients]);
+  // 3. Cases with Expenses List (like casesFinancials but for expenses)
+  const casesWithExpenses = useMemo(() => {
+    return casesFinancials.filter(c => c.financials.expenses > 0);
+  }, [casesFinancials]);
 
   // --- Handlers ---
 
@@ -171,11 +135,11 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
     
     const newTransaction: FinancialTransaction = {
        id: Math.random().toString(36).substring(2, 9),
-       date: new Date().toISOString().split('T')[0],
+       date: transactionData.date, // Use selected date instead of current date
        amount: Number(transactionData.amount),
        type: transactionData.type,
        method: transactionData.type === 'payment' ? transactionData.method : undefined,
-       category: transactionData.type === 'expense' ? (transactionData.category || 'نثريات') : undefined,
+       category: transactionData.type === 'expense' ? transactionData.category : undefined,
        description: transactionData.description,
        recordedBy: 'المحامي' // In real app, use current user name
     };
@@ -197,7 +161,15 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
     });
 
     setIsTransactionModalOpen(false);
-    setTransactionData({ caseId: '', amount: 0, type: 'payment', description: '', method: 'cash', category: '' });
+    setTransactionData({ 
+      caseId: '', 
+      amount: 0, 
+      type: 'payment', 
+      description: '', 
+      method: 'cash', 
+      category: '',
+      date: new Date().toISOString().split('T')[0]
+    });
   };
 
   const openTransactionModal = (caseId?: string) => {
@@ -261,6 +233,10 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
      const totalPaid = payments.reduce((sum, tx) => sum + tx.amount, 0) || 0;
      const totalExpenses = expenses.reduce((sum, tx) => sum + tx.amount, 0) || 0;
      const netIncome = totalPaid - totalExpenses;
+     
+     // Use calculated values from transaction history instead of stored values
+     const agreedFees = totalPaid + ((c.finance?.agreedFees || 0) - totalPaid);
+     const remainingFees = agreedFees - totalPaid;
 
      return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -284,7 +260,7 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800 text-center">
                       <p className="text-xs text-blue-600 dark:text-blue-400 font-bold mb-1">إجمالي الأتعاب</p>
-                      <p className="text-lg font-bold text-blue-900 dark:text-blue-200">{c.finance?.agreedFees.toLocaleString()}</p>
+                      <p className="text-lg font-bold text-blue-900 dark:text-blue-200">{agreedFees.toLocaleString()}</p>
                    </div>
                    <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl border border-green-100 dark:border-green-800 text-center">
                       <p className="text-xs text-green-600 dark:text-green-400 font-bold mb-1">المدفوع</p>
@@ -298,7 +274,7 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
                    </div>
                    <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-800 text-center">
                       <p className="text-xs text-red-600 dark:text-red-400 font-bold mb-1">المتبقي</p>
-                      <p className="text-lg font-bold text-red-900 dark:text-red-200">{((c.finance?.agreedFees||0) - totalPaid).toLocaleString()}</p>
+                      <p className="text-lg font-bold text-red-900 dark:text-red-200">{remainingFees.toLocaleString()}</p>
                    </div>
                 </div>
               )}
@@ -329,7 +305,7 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
                     <table className="w-full text-right text-sm">
                        <thead className="bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 sticky top-0">
                           <tr>
-                             <th className="p-4">التاريخ</th>
+                             <th className="p-4">تاريخ الدفع</th>
                              <th className="p-4">المبلغ</th>
                              <th className="p-4">طريقة الدفع</th>
                              <th className="p-4">البيان</th>
@@ -356,7 +332,7 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
                     <table className="w-full text-right text-sm">
                        <thead className="bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 sticky top-0">
                           <tr>
-                             <th className="p-4">التاريخ</th>
+                             <th className="p-4">تاريخ المصروف</th>
                              <th className="p-4">المبلغ</th>
                              <th className="p-4">البند</th>
                              <th className="p-4">البيان</th>
@@ -617,34 +593,35 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
               <table className="w-full text-right text-sm">
                  <thead className="bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold">
                     <tr>
-                       <th className="p-4">التاريخ</th>
-                       <th className="p-4">البند / الوصف</th>
-                       <th className="p-4">نوع المصروف</th>
-                       <th className="p-4">خاص بقضية</th>
-                       <th className="p-4">القيمة</th>
-                       <th className="p-4">جهة الدفع</th>
+                       <th className="p-4">القضية / الموكل</th>
+                       <th className="p-4">إجمالي المصروفات</th>
+                       <th className="p-4">صافي الدخل</th>
+                       <th className="p-4">الإجراءات</th>
                     </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-slate-800 dark:text-slate-200">
-                    {expensesList.map((exp: any) => (
-                       <tr key={exp.id} className="hover:bg-slate-50 dark:hover:bg-slate-700">
-                          <td className="p-4 font-mono text-slate-600 dark:text-slate-400">{exp.date}</td>
-                          <td className="p-4 text-slate-800 dark:text-white">{exp.description}</td>
-                          <td className="p-4"><span className="bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-xs">{exp.category}</span></td>
+                    {casesWithExpenses.map(c => (
+                       <tr key={c.id} onClick={() => setSelectedCaseForDetails(c.id)} className="hover:bg-slate-50 dark:hover:bg-slate-700 group cursor-pointer transition-colors">
                           <td className="p-4">
-                             {exp.caseTitle ? (
-                                <div>
-                                   <div className="text-xs font-bold text-slate-700 dark:text-slate-300">{exp.caseTitle}</div>
-                                   <div className="text-[10px] text-slate-400">{exp.clientName}</div>
-                                </div>
-                             ) : '-'}
+                             <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">{c.title}</div>
+                             <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
+                                <User className="w-3 h-3" /> {c.clientName}
+                             </div>
                           </td>
-                          <td className="p-4 font-bold text-red-600 dark:text-red-400">-{exp.amount.toLocaleString()}</td>
-                          <td className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">{exp.paidBy}</td>
+                          <td className="p-4 font-bold text-red-600 dark:text-red-400">{c.financials.expenses.toLocaleString()} ج.م</td>
+                          <td className="p-4 font-bold text-indigo-600 dark:text-indigo-400">{c.financials.netIncome.toLocaleString()} ج.م</td>
+                          <td className="p-4">
+                             <button 
+                                onClick={(e) => { e.stopPropagation(); openTransactionModal(c.id); }}
+                                className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded-lg transition-colors flex items-center gap-1 font-bold text-xs"
+                             >
+                                <Plus className="w-3 h-3" /> إضافة مصروف
+                             </button>
+                          </td>
                        </tr>
                     ))}
-                    {expensesList.length === 0 && (
-                       <tr><td colSpan={6} className="p-8 text-center text-slate-400 dark:text-slate-500">لا توجد مصروفات مسجلة</td></tr>
+                    {casesWithExpenses.length === 0 && (
+                       <tr><td colSpan={4} className="p-8 text-center text-slate-400 dark:text-slate-500">لا توجد قضايا بمصروفات مسجلة</td></tr>
                     )}
                  </tbody>
               </table>
@@ -698,6 +675,18 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
                            <option key={c.id} value={c.id}>{c.title} - {clients.find(cl=>cl.id===c.clientId)?.name}</option>
                         ))}
                      </select>
+                  </div>
+
+                  {/* Date */}
+                  <div>
+                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">تاريخ المعاملة</label>
+                     <input 
+                        type="date" 
+                        required
+                        className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+                        value={transactionData.date}
+                        onChange={e => setTransactionData({...transactionData, date: e.target.value})}
+                     />
                   </div>
 
                   {/* Amount */}

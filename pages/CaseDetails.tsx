@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Case, Client, Hearing, CaseStatus, CourtType, CaseDocument, CaseNote, CaseMemo, ClientRole, Opponent, CaseStrategy, CaseFinance, CaseRuling, FinancialTransaction, PaymentMethod, HearingAttachment, HearingStatus } from '../types';
 import { ArrowRight, User, MapPin, Phone, Calendar, Gavel, AlertCircle, FileText, X, Edit3, Link as LinkIcon, ExternalLink, Save, Upload, Trash2, File, Image as ImageIcon, Plus, MessageSquare, FileType, AlertTriangle, Printer, Clock, Shield, DollarSign, ScrollText, CheckSquare, Search, Lock, Eye, Download, CheckCircle, List, FolderOpen, History, Briefcase, UserCheck, Wallet, TrendingUp, TrendingDown, CreditCard, Banknote, Smartphone, Building, Calculator, Paperclip, ArrowDownLeft, ArrowUpRight, FileCheck, BarChart3 } from 'lucide-react';
+import { DocumentService } from '../services/documentService';
 
 interface CaseDetailsProps {
   caseId: string;
@@ -13,12 +14,31 @@ interface CaseDetailsProps {
   onUpdateCase?: (updatedCase: Case) => void;
   onUpdateHearing?: (hearing: Hearing) => void;
   onClientClick?: (clientId: string) => void;
+  onDeleteCase?: (caseId: string) => void;
 }
 
-const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, hearings, onBack, onAddHearing, onUpdateCase, onUpdateHearing, onClientClick }) => {
+const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, hearings, onBack, onAddHearing, onUpdateCase, onUpdateHearing, onClientClick, onDeleteCase }) => {
   // --- STATE ---
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'documents' | 'memos' | 'ruling' | 'finance'>('overview');
   const [docSearchTerm, setDocSearchTerm] = useState('');
+  const [firebaseDocuments, setFirebaseDocuments] = useState<any[]>([]);
+
+  // Load Firebase documents on component mount
+  useEffect(() => {
+    if (caseId) {
+      loadCaseDocuments();
+    }
+  }, [caseId]);
+
+  const loadCaseDocuments = async () => {
+    try {
+      const documents = await DocumentService.getCaseDocuments(caseId);
+      setFirebaseDocuments(documents);
+      console.log('📥 Loaded case documents:', documents.length);
+    } catch (error) {
+      console.error('❌ Error loading case documents:', error);
+    }
+  };
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null); // For general upload button
@@ -35,6 +55,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
   const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
   const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
   const [isRulingModalOpen, setIsRulingModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // Forms Data
   const [editCaseData, setEditCaseData] = useState<Partial<Case>>({});
@@ -472,23 +493,40 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
     }
   };
 
-  const handleSaveDocument = (e: React.FormEvent) => {
+  const handleSaveDocument = async (e: React.FormEvent) => {
      e.preventDefault();
-     if (caseData && onUpdateCase && newDocData.name && selectedFile) {
-        const newDoc: CaseDocument = {
-           id: Math.random().toString(36).substring(2, 9),
-           name: newDocData.name,
-           type: newDocData.type as any,
-           category: newDocData.category as any,
-           url: URL.createObjectURL(selectedFile), 
-           size: formatFileSize(selectedFile.size), 
-           uploadDate: new Date().toISOString().split('T')[0],
-           isOriginal: newDocData.isOriginal
-        };
-        onUpdateCase({ ...caseData, documents: [...(caseData.documents || []), newDoc] });
-        setIsDocumentModalOpen(false);
-        setNewDocData({ name: '', type: 'pdf', category: 'other' });
-        setSelectedFile(null);
+     if (caseData && newDocData.name && selectedFile) {
+        try {
+          console.log('🚀 Starting case document upload with Firebase Storage');
+          
+          // تحضير بيانات المستند
+          const documentData = {
+            title: newDocData.name,
+            fileName: selectedFile.name,
+            fileType: selectedFile.type,
+            category: newDocData.category as any,
+            uploadedBy: 'current-user',
+            isOriginal: newDocData.isOriginal,
+            caseId: caseData.id // ربط المستند بالقضية
+          };
+
+          // رفع المستند إلى Firebase Storage
+          const documentId = await DocumentService.uploadDocument(selectedFile, documentData);
+          
+          console.log('✅ Case document uploaded successfully:', documentId);
+          
+          // إغلاق النافذة
+          setIsDocumentModalOpen(false);
+          setNewDocData({ name: '', type: 'pdf', category: 'other' });
+          setSelectedFile(null);
+          
+          // تحديث قائمة المستندات
+          await loadCaseDocuments();
+          
+        } catch (error) {
+          console.error('❌ Error uploading case document:', error);
+          alert('حدث خطأ أثناء رفع المستند. يرجى المحاولة مرة أخرى.');
+        }
      }
   };
 
@@ -580,6 +618,12 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
       window.print();
   };
 
+  const handleDeleteCase = () => {
+      if (onDeleteCase) {
+          onDeleteCase(caseId);
+      }
+  };
+
   if (!caseData) return <div className="p-8 text-center text-slate-500 dark:text-slate-400">القضية غير موجودة</div>;
 
   // --- RENDER SECTIONS ---
@@ -645,6 +689,9 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
            </button>
            <button onClick={handlePrintSummary} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors" title="طباعة ملخص">
               <Printer className="w-5 h-5" />
+           </button>
+           <button onClick={() => setIsDeleteModalOpen(true)} className="p-2 text-red-500 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="حذف القضية">
+              <Trash2 className="w-5 h-5" />
            </button>
         </div>
       </div>
@@ -920,6 +967,27 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
             </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Firebase Documents */}
+            {firebaseDocuments.map(doc => (
+                <div key={doc.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all group">
+                    <div className="flex items-start gap-3 mb-3">
+                        <div className="bg-slate-50 dark:bg-slate-700 p-2 rounded-lg">
+                            {DocumentService.getFileIcon(doc.fileType)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-800 dark:text-white text-sm truncate">{doc.title}</p>
+                            <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-500 dark:text-slate-400">{doc.category || 'عام'}</span>
+                        </div>
+                    </div>
+                    <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-700 text-xs">
+                        <span className="text-slate-400">{new Date(doc.uploadedAt).toLocaleDateString('ar-SA')}</span>
+                        <a href={doc.fileUrl} target="_blank" className="flex items-center gap-1 text-primary-600 dark:text-primary-400 hover:underline">
+                            <Eye className="w-3 h-3"/> معاينة
+                        </a>
+                    </div>
+                </div>
+            ))}
+            {/* Legacy Documents */}
             {caseData?.documents?.map(doc => (
                 <div key={doc.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all group">
                     <div className="flex items-start gap-3 mb-3">
@@ -939,7 +1007,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                     </div>
                 </div>
             ))}
-            {(!caseData?.documents || caseData.documents.length === 0) && (
+            {firebaseDocuments.length === 0 && (!caseData?.documents || caseData.documents.length === 0) && (
                 <div className="col-span-full py-10 text-center text-slate-400 dark:text-slate-500 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl">
                     <File className="w-10 h-10 mx-auto mb-2 opacity-30"/>
                     <p>لا توجد مستندات مرفقة</p>
@@ -1037,11 +1105,9 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
     // حساب القيم المطلوبة للقضية الحالية
     const totalFees = caseData?.finance?.agreedFees || 0;
     
-    // حساب المدفوعات من سجل المعاملات لضمان الدقة
-    const totalPaid = caseData?.finance?.history?.filter(tx => tx.type === 'payment').reduce((sum, tx) => sum + tx.amount, 0) || 0;
-    
-    // حساب المصروفات من سجل المعاملات لضمان الدقة
-    const totalExpenses = caseData?.finance?.history?.filter(tx => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0) || 0;
+    // استخدام القيم المخزنة مباشرة بدلاً من الحساب من السجل
+    const totalPaid = caseData?.finance?.paidAmount || 0;
+    const totalExpenses = caseData?.finance?.expenses || 0;
     
     const remainingFees = totalFees - totalPaid; // المتبقي من الأتعاب
     const netFees = totalPaid - totalExpenses; // صافي الأتعاب بعد خصم المصروفات
@@ -1575,6 +1641,54 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                   </div>
                   <button type="submit" className="w-full bg-primary-600 text-white p-2 rounded-lg">حفظ المذكرة</button>
                </form>
+            </div>
+         </div>
+      )}
+
+    {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6 animate-in zoom-in-95">
+               <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-red-100 dark:bg-red-900/20 rounded-full">
+                     <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div>
+                     <h3 className="font-bold text-lg text-slate-800 dark:text-white">حذف القضية</h3>
+                     <p className="text-sm text-slate-600 dark:text-slate-400">هل أنت متأكد من حذف هذه القضية؟</p>
+                  </div>
+               </div>
+               
+               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-4">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                     <AlertTriangle className="w-4 h-4" />
+                     <span className="text-sm font-medium">تحذير</span>
+                  </div>
+                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                     سيتم حذف جميع البيانات المرتبطة بالقضية بما في ذلك الجلسات والمستندات والمذكرات والأحكام والبيانات المالية. هذا الإجراء لا يمكن التراجع عنه.
+                  </p>
+               </div>
+
+               <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 mb-4">
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">القضية التي سيتم حذفها:</p>
+                  <p className="text-lg font-bold text-slate-800 dark:text-white">{caseData?.title}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">رقم القضية: {caseData?.caseNumber}</p>
+               </div>
+
+               <div className="flex gap-3">
+                  <button 
+                     onClick={() => setIsDeleteModalOpen(false)} 
+                     className="flex-1 py-3 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+                  >
+                     إلغاء
+                  </button>
+                  <button 
+                     onClick={handleDeleteCase} 
+                     className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 dark:shadow-none transition-colors flex items-center justify-center gap-2"
+                  >
+                     <Trash2 className="w-5 h-5" /> حذف القضية
+                  </button>
+               </div>
             </div>
          </div>
       )}

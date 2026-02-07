@@ -361,6 +361,19 @@ export class HybridDataService {
     };
   }
 
+  // دالة بسيطة لحفظ محلي فقط (حتى يتم إصلاح Supabase)
+  static async saveCaseLocalOnly(caseData: Case): Promise<string> {
+    try {
+      console.log('💾 Saving case locally only (Supabase schema issues):', caseData.title);
+      const localId = await db.cases.add(caseData);
+      console.log('✅ Saved locally with ID:', localId);
+      return localId.toString();
+    } catch (error) {
+      console.error('❌ Error in saveCaseLocalOnly:', error);
+      throw error;
+    }
+  }
+
   private static convertRemoteCaseToLocal(remoteCase: any): Case {
     return {
       id: remoteCase.id,

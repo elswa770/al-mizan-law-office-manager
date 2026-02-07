@@ -1,12 +1,12 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const apiKey = process.env.API_KEY || import.meta.env.GEMINI_API_KEY || '';
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 // Only initialize if API key is available
-let ai: GoogleGenAI | null = null;
+let ai: GoogleGenerativeAI | null = null;
 if (apiKey) {
-  ai = new GoogleGenAI({ apiKey });
+  ai = new GoogleGenerativeAI({ apiKey });
 }
 
 export const askLegalAssistant = async (prompt: string, context?: string) => {
@@ -15,8 +15,8 @@ export const askLegalAssistant = async (prompt: string, context?: string) => {
       throw new Error("المساعد الذكي غير متوفر حالياً. يرجى تفعيل Gemini API Key.");
     }
 
-    // Upgraded to PRO model for complex legal reasoning
-    const model = 'gemini-3-pro-preview';
+    // Use free tier model instead of PRO to avoid quota issues
+    const modelName = 'gemini-1.5-flash-latest';
     
     const systemInstruction = `
       أنت "الميزان"، مستشار قانوني خبير ومحامي نقض مصري متمرس.
@@ -41,19 +41,19 @@ export const askLegalAssistant = async (prompt: string, context?: string) => {
     // Enable thinking for deep reasoning
     const thinkingBudget = 4096; 
 
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: context 
+    const model = ai.getGenerativeModel({ model: modelName });
+    const response = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: context 
         ? `بيانات القضية والمراجع (Context):\n${context}\n\n---\nسؤال المحامي:\n${prompt}` 
-        : prompt,
-      config: {
-        systemInstruction: systemInstruction,
+        : prompt
+      }] }],
+      systemInstruction: systemInstruction,
+      generationConfig: {
         temperature: 0.1, // Lower temperature for more factual/deterministic output
-        thinkingConfig: { thinkingBudget: thinkingBudget }
       }
     });
 
-    return response.text;
+    return response.response.text();
   } catch (error) {
     console.error("Gemini API Error:", error);
     throw new Error("حدث خطأ أثناء الاتصال بالمساعد الذكي. يرجى المحاولة مرة أخرى.");

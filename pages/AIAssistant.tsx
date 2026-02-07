@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { askLegalAssistant } from '../services/geminiService';
+import { askLocalLegalAssistant, learnFromCases, learnFromConversation, getKnowledgeBaseStats } from '../services/localAIService';
 import { Send, Sparkles, AlertTriangle, Copy, Check, Briefcase, FileText, Save, Edit3, X, ChevronRight, Download, Lightbulb, History, Trash2, BookOpen } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Case, CaseDocument, CourtType, ChatMessage, LegalReference } from '../types';
@@ -33,6 +33,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ cases = [], references = [], 
 
   // Hidden ref for PDF generation
   const printRef = useRef<HTMLDivElement>(null);
+
+  // --- Learn from existing cases on component mount ---
+  useEffect(() => {
+    if (cases.length > 0) {
+      learnFromCases(cases);
+    }
+  }, [cases]);
 
   // --- Auto-scroll ---
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -148,8 +155,11 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ cases = [], references = [], 
     setError(null);
     
     try {
-      const result = await askLegalAssistant(newUserMsg.text, context);
+      const result = await askLocalLegalAssistant(newUserMsg.text, context);
       const modelResponse = result || 'عذراً، لم أتمكن من الحصول على إجابة.';
+      
+      // Learn from this conversation
+      learnFromConversation(newUserMsg.text, modelResponse);
       
       const newModelMsg: ChatMessage = {
         id: Math.random().toString(36).substr(2, 9),

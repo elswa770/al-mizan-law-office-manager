@@ -1,7 +1,8 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Case, Client, CaseDocument, ClientDocument, CaseRuling } from '../types';
-import { FileText, Search, Filter, FolderOpen, User, Briefcase, File, Gavel, FileCheck, Shield, Download, Eye, ExternalLink, Calendar, Grid, List, Building2, Upload, X, Check } from 'lucide-react';
+import { FileText, Search, Filter, FolderOpen, User, Briefcase, File, Gavel, FileCheck, Shield, Download, Eye, ExternalLink, Calendar, Grid, List, Building2, Upload, X, Check, Trash2 } from 'lucide-react';
+import { DocumentService } from '../services/documentService';
 
 interface DocumentsProps {
   cases: Case[];
@@ -26,6 +27,9 @@ interface UnifiedDoc {
   sourceId: string;
   sourceName: string;
   isOriginal?: boolean;
+  isFirebaseDocument?: boolean; // للتحقق إذا كان مستند Firebase
+  firebaseId?: string; // ID المستند في Firestore
+  fileName?: string; // اسم الملف الأصلي
 }
 
 const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onClientClick, onUpdateCase, onUpdateClient }) => {
@@ -33,6 +37,22 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'case' | 'client'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
+  const [firebaseDocuments, setFirebaseDocuments] = useState<any[]>([]);
+
+  // Load Firebase documents on component mount
+  useEffect(() => {
+    loadFirebaseDocuments();
+  }, []);
+
+  const loadFirebaseDocuments = async () => {
+    try {
+      const documents = await DocumentService.getAllDocuments();
+      setFirebaseDocuments(documents);
+      console.log('📥 Loaded Firebase documents:', documents.length);
+    } catch (error) {
+      console.error('❌ Error loading Firebase documents:', error);
+    }
+  };
 
   // --- Upload Modal State ---
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -51,22 +71,65 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
   const allDocuments = useMemo(() => {
     const docs: UnifiedDoc[] = [];
 
-    // A. Process Client Documents
+    // A. Add Firebase Documents
+    firebaseDocuments.forEach(doc => {
+      let cat: UnifiedDoc['category'] = 'other';
+      let label = 'مستندات عامة';
+      
+      if (['contract'].includes(doc.category)) { cat = 'contract'; label = 'عقود'; }
+      else if (['legal'].includes(doc.category)) { cat = 'legal'; label = 'أوراق قانونية'; }
+      else if (['ruling'].includes(doc.category)) { cat = 'ruling'; label = 'أحكام'; }
+      else if (['admin'].includes(doc.category)) { cat = 'admin'; label = 'مستندات هوية'; }
+      else if (['evidence'].includes(doc.category)) { cat = 'evidence'; label = 'أدلة ومحاضر'; }
+
+      // Find source name
+      let sourceName = 'غير محدد';
+      if (doc.caseId) {
+        const caseItem = cases.find(c => c.id === doc.caseId);
+        sourceName = caseItem?.title || 'قضية غير معروفة';
+      } else if (doc.clientId) {
+        const clientItem = clients.find(c => c.id === doc.clientId);
+        sourceName = clientItem?.name || 'موكل غير معروف';
+      }
+
+      docs.push({
+        id: doc.id,
+        uniqueKey: `firebase-${doc.id}`,
+        title: doc.title,
+        type: doc.fileType,
+        category: cat,
+        categoryLabel: label,
+        date: doc.uploadedAt,
+        url: doc.fileUrl, // Use Firebase URL
+        sourceType: doc.caseId ? 'case' : 'client',
+        sourceId: doc.caseId || doc.clientId || '',
+        sourceName: sourceName,
+        isOriginal: doc.isOriginal,
+        isFirebaseDocument: true, // تحديد أنه مستند Firebase
+        firebaseId: doc.id, // ID في Firestore
+        fileName: doc.fileName // اسم الملف الأصلي
+      });
+    });
+
+    // B. Process Legacy Client Documents (from local data)
     clients.forEach(client => {
       // 1. Generic Documents
       client.documents?.forEach(d => {
         let cat: UnifiedDoc['category'] = 'other';
         let label = 'مستندات عامة';
         
-        if (['national_id', 'commercial_register', 'tax_card'].includes(d.type)) { cat = 'admin'; label = 'مستندات هوية'; }
-        else if (['poa'].includes(d.type)) { cat = 'legal'; label = 'توكيلات'; }
-        else if (['contract'].includes(d.type)) { cat = 'contract'; label = 'عقود'; }
+        // استخدام type بدلاً من category للـ ClientDocument
+        if (['contract', 'agreement'].includes(d.type)) { cat = 'contract'; label = 'عقود'; }
+        else if (['poa', 'power', 'authorization'].includes(d.type)) { cat = 'legal'; label = 'أوراق قانونية'; }
+        else if (['evidence', 'proof', 'report'].includes(d.type)) { cat = 'evidence'; label = 'أدلة ومحاضر'; }
+        else if (['id', 'passport', 'national'].includes(d.type)) { cat = 'admin'; label = 'مستندات هوية'; }
+        else if (['court', 'legal', 'ruling'].includes(d.type)) { cat = 'ruling'; label = 'أحكام'; }
 
         docs.push({
           id: d.id,
           uniqueKey: `client-${client.id}-${d.id}`,
           title: d.name,
-          type: 'file',
+          type: d.type,
           category: cat,
           categoryLabel: label,
           date: d.uploadDate,
@@ -74,38 +137,43 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
           sourceType: 'client',
           sourceId: client.id,
           sourceName: client.name,
+          isOriginal: false, // ClientDocument لا يوجد بها isOriginal
+          isFirebaseDocument: false // تحديد أنه مستند محلي
         });
       });
 
-      // 2. Legacy POAs (if any in mock data)
+      // 2. POA Files
       client.poaFiles?.forEach(p => {
         docs.push({
           id: p.id,
-          uniqueKey: `client-poa-${client.id}-${p.id}`,
+          uniqueKey: `poa-${client.id}-${p.id}`,
           title: p.name,
-          type: 'pdf',
+          type: 'pdf', // POAFile لا يوجد بها type، نستخدم pdf افتراضي
           category: 'legal',
           categoryLabel: 'توكيلات',
-          date: p.uploadDate,
+          date: '', // POAFile لا يوجد بها تاريخ، نتركه فارغاً
           url: p.url,
           sourceType: 'client',
           sourceId: client.id,
           sourceName: client.name,
+          isOriginal: false, // POAFile لا يوجد بها isOriginal
+          isFirebaseDocument: false // تحديد أنه مستند محلي
         });
       });
     });
 
-    // B. Process Case Documents
+    // C. Process Case Documents (from local data)
     cases.forEach(c => {
-      // 1. Standard Case Documents
+      // 1. Generic Documents
       c.documents?.forEach(d => {
         let cat: UnifiedDoc['category'] = 'other';
-        let label = 'مستندات القضية';
-
-        if (d.category === 'contract') { cat = 'contract'; label = 'عقود'; }
-        else if (d.category === 'ruling') { cat = 'ruling'; label = 'أحكام'; }
-        else if (d.category === 'notice') { cat = 'legal'; label = 'إعلانات وإنذارات'; }
-        else if (d.category === 'minutes') { cat = 'evidence'; label = 'محاضر'; }
+        let label = 'مستندات عامة';
+        
+        if (['contract', 'agreement'].includes(d.category)) { cat = 'contract'; label = 'عقود'; }
+        else if (['poa', 'power', 'authorization'].includes(d.category)) { cat = 'legal'; label = 'أوراق قانونية'; }
+        else if (['evidence', 'proof', 'report'].includes(d.category)) { cat = 'evidence'; label = 'أدلة ومحاضر'; }
+        else if (['id', 'passport', 'national'].includes(d.category)) { cat = 'admin'; label = 'مستندات هوية'; }
+        else if (['court', 'legal', 'ruling'].includes(d.category)) { cat = 'ruling'; label = 'أحكام'; }
 
         docs.push({
           id: d.id,
@@ -118,53 +186,93 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
           url: d.url,
           sourceType: 'case',
           sourceId: c.id,
-          sourceName: c.title, // Or client name if preferred
-          isOriginal: d.isOriginal
+          sourceName: c.title,
+          isOriginal: d.isOriginal,
+          isFirebaseDocument: false // تحديد أنه مستند محلي
         });
       });
 
-      // 2. Rulings (that have files)
+      // 2. Rulings
       c.rulings?.forEach(r => {
         if (r.url) {
           docs.push({
             id: r.id,
-            uniqueKey: `case-ruling-${c.id}-${r.id}`,
-            title: r.documentName || `ملف حكم: ${r.summary.substring(0, 20)}...`,
+            uniqueKey: `ruling-${c.id}-${r.id}`,
+            title: r.summary || 'حكم',
             type: 'pdf',
             category: 'ruling',
-            categoryLabel: 'أحكام قضائية',
-            date: r.date,
+            categoryLabel: 'أحكام',
+            date: r.date || '',
             url: r.url,
             sourceType: 'case',
             sourceId: c.id,
             sourceName: c.title,
-            isOriginal: true
+            isOriginal: true,
+            isFirebaseDocument: false // تحديد أنه مستند محلي
           });
         }
       });
-      
-      // 3. Memos (that have files)
+
+      // 3. Memos
       c.memos?.forEach(m => {
-        if (m.url) {
-          docs.push({
-            id: m.id,
-            uniqueKey: `case-memo-${c.id}-${m.id}`,
-            title: `مذكرة: ${m.title}`,
-            type: 'pdf',
-            category: 'legal',
-            categoryLabel: 'مذكرات دفاع',
-            date: m.submissionDate,
-            url: m.url,
-            sourceType: 'case',
-            sourceId: c.id,
-            sourceName: c.title,
-          });
-        }
+        docs.push({
+          id: m.id,
+          uniqueKey: `memo-${c.id}-${m.id}`,
+          title: m.title,
+          type: 'pdf',
+          category: 'legal',
+          categoryLabel: 'مذكرات',
+          date: '', // CaseMemo لا يوجد بها date، نتركه فارغاً
+          url: m.url,
+          sourceType: 'case',
+          sourceId: c.id,
+          sourceName: c.title,
+          isOriginal: false,
+          isFirebaseDocument: false // تحديد أنه مستند محلي
+        });
       });
     });
 
     return docs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [cases, clients]);
+  }, [cases, clients, firebaseDocuments]);
+
+  // --- 3. Delete Document Function ---
+  const handleDeleteDocument = async (doc: UnifiedDoc) => {
+    if (!window.confirm(`هل أنت متأكد من حذف المستند "${doc.title}"؟`)) {
+      return;
+    }
+
+    try {
+      if (doc.isFirebaseDocument && doc.firebaseId) {
+        // حذف مستند Firebase
+        await DocumentService.deleteDocument(doc.firebaseId, doc.fileName || '');
+        console.log('✅ Firebase document deleted successfully');
+      } else {
+        // حذف مستند محلي
+        if (doc.sourceType === 'case' && onUpdateCase) {
+          const caseItem = cases.find(c => c.id === doc.sourceId);
+          if (caseItem) {
+            const updatedDocuments = caseItem.documents?.filter(d => d.id !== doc.id) || [];
+            onUpdateCase({ ...caseItem, documents: updatedDocuments });
+          }
+        } else if (doc.sourceType === 'client' && onUpdateClient) {
+          const clientItem = clients.find(c => c.id === doc.sourceId);
+          if (clientItem) {
+            const updatedDocuments = clientItem.documents?.filter(d => d.id !== doc.id) || [];
+            onUpdateClient({ ...clientItem, documents: updatedDocuments });
+          }
+        }
+        console.log('✅ Local document deleted successfully');
+      }
+
+      // تحديث قائمة المستندات
+      await loadFirebaseDocuments();
+      
+    } catch (error) {
+      console.error('❌ Error deleting document:', error);
+      alert('حدث خطأ أثناء حذف المستند. يرجى المحاولة مرة أخرى.');
+    }
+  };
 
   // --- 2. Filtering Logic ---
   const filteredDocs = allDocuments.filter(doc => {
@@ -235,48 +343,50 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
     }
   };
 
-  const handleSaveDocument = (e: React.FormEvent) => {
+  // --- 5. Upload Handlers ---
+  const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadData.file || !uploadData.name || !uploadData.targetId) return;
 
-    const fileUrl = URL.createObjectURL(uploadData.file);
-    const date = new Date().toISOString().split('T')[0];
-    const size = formatFileSize(uploadData.file.size);
+    try {
+      console.log('🚀 Starting document upload with Firebase Storage');
+      
+      // تحضير بيانات المستند
+      const documentData: any = {
+        title: uploadData.name,
+        fileName: uploadData.file.name,
+        fileType: uploadData.file.type,
+        category: uploadData.docType as any,
+        uploadedBy: 'current-user', // يمكن تحديثه لاحقاً
+        isOriginal: uploadData.isOriginal
+      };
 
-    if (uploadData.targetType === 'case' && onUpdateCase) {
-       const targetCase = cases.find(c => c.id === uploadData.targetId);
-       if (targetCase) {
-          const newDoc: CaseDocument = {
-             id: Math.random().toString(36).substring(2, 9),
-             name: uploadData.name,
-             type: uploadData.type as any,
-             category: uploadData.docType as any,
-             url: fileUrl,
-             size: size,
-             uploadDate: date,
-             isOriginal: uploadData.isOriginal
-          };
-          onUpdateCase({ ...targetCase, documents: [...(targetCase.documents || []), newDoc] });
-       }
-    } else if (uploadData.targetType === 'client' && onUpdateClient) {
-       const targetClient = clients.find(c => c.id === uploadData.targetId);
-       if (targetClient) {
-          const newDoc: ClientDocument = {
-             id: Math.random().toString(36).substring(2, 9),
-             name: uploadData.name,
-             type: uploadData.docType as any,
-             url: fileUrl,
-             uploadDate: date,
-          };
-          onUpdateClient({ ...targetClient, documents: [...(targetClient.documents || []), newDoc] });
-       }
+      // إضافة caseId أو clientId حسب النوع
+      if (uploadData.targetType === 'case') {
+        documentData.caseId = uploadData.targetId;
+      } else {
+        documentData.clientId = uploadData.targetId;
+      }
+
+      // رفع المستند إلى Firebase Storage
+      const documentId = await DocumentService.uploadDocument(uploadData.file, documentData);
+      
+      console.log('✅ Document uploaded successfully:', documentId);
+      
+      // إغلاق النافذة
+      setIsUploadModalOpen(false);
+      
+      // تحديث قائمة المستندات
+      await loadFirebaseDocuments();
+      
+    } catch (error) {
+      console.error('❌ Error uploading document:', error);
+      alert('حدث خطأ أثناء رفع المستند. يرجى المحاولة مرة أخرى.');
     }
-
-    setIsUploadModalOpen(false);
   };
 
-  return (
-    <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-140px)]">
+return (
+  <div className="flex flex-col md:flex-row gap-6 h-[calc(100vh-140px)]">
       
       {/* Sidebar Filters */}
       <div className="w-full md:w-64 shrink-0 space-y-4">
@@ -417,7 +527,13 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
                                     <Eye className="w-3 h-3" /> معاينة
                                  </a>
                               )}
-                              {/* Placeholder for actions like Delete/Edit (would require more prop plumbing) */}
+                              <button
+                                 onClick={() => handleDeleteDocument(doc)}
+                                 className="flex items-center justify-center gap-2 py-1.5 bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300 rounded-lg text-xs font-bold hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
+                                 title="حذف المستند"
+                              >
+                                 <Trash2 className="w-3 h-3" />
+                              </button>
                            </div>
                         </div>
                      ))}
@@ -462,11 +578,20 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
                                  </td>
                                  <td className="p-3 font-mono text-slate-500 dark:text-slate-400">{doc.date}</td>
                                  <td className="p-3">
-                                    {doc.url && (
-                                       <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline text-xs font-bold flex items-center gap-1">
-                                          <ExternalLink className="w-3 h-3" /> فتح
-                                       </a>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                       {doc.url && (
+                                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline text-xs font-bold flex items-center gap-1">
+                                             <ExternalLink className="w-3 h-3" /> فتح
+                                          </a>
+                                       )}
+                                       <button
+                                          onClick={() => handleDeleteDocument(doc)}
+                                          className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs font-bold flex items-center gap-1"
+                                          title="حذف المستند"
+                                       >
+                                          <Trash2 className="w-3 h-3" /> حذف
+                                       </button>
+                                    </div>
                                  </td>
                               </tr>
                            ))}

@@ -242,6 +242,7 @@ export interface Hearing {
   attachments?: HearingAttachment[]; // NEW: Multiple attachments
   expenses?: HearingExpense; // مصروفات الجلسة
   notes?: string;
+  location?: string; // مكان الجلسة
 }
 
 export interface Invoice {

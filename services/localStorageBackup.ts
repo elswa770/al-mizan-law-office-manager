@@ -7,8 +7,16 @@ export class LocalStorageBackup {
   private static readonly HEARINGS_KEY = 'law_office_hearings_backup';
   private static readonly TASKS_KEY = 'law_office_tasks_backup';
 
+  // Disable localStorage backup - Firebase only
+  private static readonly ENABLED = false;
+
   // Save users to localStorage
   static saveUsers(users: AppUser[]): void {
+    if (!this.ENABLED) {
+      console.log('🚫 LocalStorage backup is disabled - Using Firebase only');
+      return;
+    }
+    
     try {
       localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
       console.log('✅ Users saved to localStorage backup:', users.length);
@@ -19,6 +27,11 @@ export class LocalStorageBackup {
 
   // Load users from localStorage
   static loadUsers(): AppUser[] {
+    if (!this.ENABLED) {
+      console.log('🚫 LocalStorage backup is disabled - Using Firebase only');
+      return [];
+    }
+    
     try {
       const saved = localStorage.getItem(this.USERS_KEY);
       if (saved) {
@@ -35,6 +48,11 @@ export class LocalStorageBackup {
 
   // Save any data to localStorage
   static saveData(key: string, data: any[]): void {
+    if (!this.ENABLED) {
+      console.log('🚫 LocalStorage backup is disabled - Using Firebase only');
+      return;
+    }
+    
     try {
       localStorage.setItem(key, JSON.stringify(data));
       console.log(`✅ ${key} saved to localStorage backup:`, data.length);
@@ -45,6 +63,11 @@ export class LocalStorageBackup {
 
   // Load any data from localStorage
   static loadData(key: string): any[] {
+    if (!this.ENABLED) {
+      console.log('🚫 LocalStorage backup is disabled - Using Firebase only');
+      return [];
+    }
+    
     try {
       const saved = localStorage.getItem(key);
       if (saved) {
@@ -61,6 +84,11 @@ export class LocalStorageBackup {
 
   // Clear all backup data
   static clearAll(): void {
+    if (!this.ENABLED) {
+      console.log('🚫 LocalStorage backup is disabled - No data to clear');
+      return;
+    }
+    
     try {
       localStorage.removeItem(this.USERS_KEY);
       localStorage.removeItem(this.CASES_KEY);
@@ -79,6 +107,20 @@ export class LocalStorageBackup {
       return typeof localStorage !== 'undefined';
     } catch {
       return false;
+    }
+  }
+
+  // Clear all existing localStorage data (for migration to Firebase only)
+  static clearAllExistingData(): void {
+    try {
+      localStorage.removeItem(this.USERS_KEY);
+      localStorage.removeItem(this.CASES_KEY);
+      localStorage.removeItem(this.CLIENTS_KEY);
+      localStorage.removeItem(this.HEARINGS_KEY);
+      localStorage.removeItem(this.TASKS_KEY);
+      console.log('🗑️ All existing localStorage data cleared - Migration to Firebase only');
+    } catch (error) {
+      console.error('❌ Error clearing existing localStorage data:', error);
     }
   }
 }

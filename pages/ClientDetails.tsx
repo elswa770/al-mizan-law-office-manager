@@ -1,7 +1,8 @@
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Client, Case, CaseStatus, POAFile, ClientType, Hearing, ClientDocument, ClientStatus } from '../types';
 import { ArrowRight, User, Phone, MapPin, Mail, FileText, Calendar, Briefcase, Hash, Save, X, ScrollText, AlertTriangle, Upload, Eye, CheckCircle, Trash2, Edit3, Plus, File, Building2, Wallet, BellRing, PhoneCall, MessageCircle, MoreVertical, Clock } from 'lucide-react';
+import { DocumentService } from '../services/documentService';
 
 interface ClientDetailsProps {
   clientId: string;
@@ -11,9 +12,10 @@ interface ClientDetailsProps {
   onBack: () => void;
   onCaseClick: (caseId: string) => void;
   onUpdateClient?: (client: Client) => void;
+  onDeleteClient?: (clientId: string) => void;
 }
 
-const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases, hearings = [], onBack, onCaseClick, onUpdateClient }) => {
+const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases, hearings = [], onBack, onCaseClick, onUpdateClient, onDeleteClient }) => {
   const client = clients.find(c => c.id === clientId);
   const clientCases = cases.filter(c => c.clientId === clientId);
   
@@ -26,7 +28,25 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [newDocData, setNewDocData] = useState<Partial<ClientDocument>>({ type: 'poa', name: '' });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [firebaseDocuments, setFirebaseDocuments] = useState<any[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load Firebase documents on component mount
+  useEffect(() => {
+    if (clientId) {
+      loadClientDocuments();
+    }
+  }, [clientId]);
+
+  const loadClientDocuments = async () => {
+    try {
+      const documents = await DocumentService.getClientDocuments(clientId);
+      setFirebaseDocuments(documents);
+      console.log('📥 Loaded client documents:', documents.length);
+    } catch (error) {
+      console.error('❌ Error loading client documents:', error);
+    }
+  };
 
   if (!client) return <div className="p-10 text-center dark:text-white">الموكل غير موجود</div>;
 
@@ -81,7 +101,7 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
   });
   if (riskyCases.length > 0) alerts.push({ type: 'warning', msg: `يوجد ${riskyCases.length} قضايا نشطة بدون جلسات قادمة` });
   // 3. Financials
-  if (totalDues > 5000) alerts.push({ type: 'info', msg: `مستحقات مالية مرتفعة: ${totalDues.toLocaleString()} ج.م` });
+  if (totalDues && totalDues > 5000) alerts.push({ type: 'info', msg: `مستحقات مالية مرتفعة: ${totalDues.toLocaleString()} ج.م` });
 
 
   // --- Handlers ---
@@ -98,6 +118,40 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
     }
   };
 
+  const handleDeleteClient = () => {
+    if (onDeleteClient) {
+      // التحقق من وجود قضايا مرتبطة بالموكل
+      const clientCases = cases.filter(c => c.clientId === clientId);
+      
+      if (clientCases.length > 0) {
+        // عرض رسالة تحذير مع تفاصيل القضايا المرتبطة
+        const caseDetails = clientCases.map(c => `• ${c.title} (${c.caseNumber}/${c.year})`).join('\n');
+        const confirmed = window.confirm(
+          `⚠️ لا يمكن حذف هذا الموكل لأنه مرتبط بالقضايا التالية:\n\n${caseDetails}\n\n` +
+          `عدد القضايا: ${clientCases.length}\n\n` +
+          `يجب حذف القضايا أولاً أو نقلها إلى موكل آخر قبل حذف الموكل.\n\n` +
+          `هل تريد عرض القضايا المرتبطة؟`
+        );
+        
+        if (confirmed) {
+          // الانتقال إلى صفحة القضايا
+          onBack(); // العودة للخلف أولاً
+          setTimeout(() => {
+            // يمكن إضافة فلترة للقضايا هنا إذا لزم الأمر
+            window.location.hash = '#cases';
+          }, 100);
+        }
+        return;
+      }
+      
+      // تأكيد الحذف (فقط إذا لم يكن هناك قضايا مرتبطة)
+      const confirmed = window.confirm('هل أنت متأكد من حذف هذا الموكل؟ لا يمكن التراجع عن هذا الإجراء.');
+      if (confirmed) {
+        onDeleteClient(clientId);
+      }
+    }
+  };
+
   const handleDocFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
      if (e.target.files && e.target.files[0]) {
         setSelectedFile(e.target.files[0]);
@@ -105,30 +159,56 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
      }
   };
 
-  const handleSaveDocument = () => {
+  const handleSaveDocument = async () => {
      if (onUpdateClient && selectedFile && newDocData.name) {
-        const newDoc: ClientDocument = {
-           id: Math.random().toString(36).substring(2, 9),
-           type: newDocData.type as any,
-           name: newDocData.name,
-           url: URL.createObjectURL(selectedFile),
-           uploadDate: new Date().toISOString().split('T')[0],
-           issueDate: newDocData.issueDate,
-           expiryDate: newDocData.expiryDate,
-           notes: newDocData.notes
-        };
-        
-        let updatedClient = { ...client, documents: [...(client.documents || []), newDoc] };
+        try {
+          console.log('🚀 Starting client document upload with Firebase Storage');
+          
+          // رفع المستند إلى Firebase Storage
+          const documentData = {
+            title: newDocData.name,
+            fileName: selectedFile.name,
+            fileType: selectedFile.type,
+            category: newDocData.type === 'poa' ? 'legal' : 'other' as any,
+            uploadedBy: 'current-user',
+            isOriginal: true,
+            clientId: client.id
+          };
 
-        // If it's a POA, update the client's main expiration date for global alerts
-        if (newDocData.type === 'poa' && newDocData.expiryDate) {
-           updatedClient.poaExpiry = newDocData.expiryDate;
+          const documentId = await DocumentService.uploadDocument(selectedFile, documentData);
+          console.log('✅ Client document uploaded successfully:', documentId);
+
+          // تحديث المستند المحلي أيضاً (للعرض الفوري)
+          const newLocalDoc: ClientDocument = {
+             id: Math.random().toString(36).substring(2, 9),
+             type: newDocData.type as any,
+             name: newDocData.name,
+             url: URL.createObjectURL(selectedFile),
+             uploadDate: new Date().toISOString().split('T')[0],
+             issueDate: newDocData.issueDate,
+             expiryDate: newDocData.expiryDate,
+             notes: newDocData.notes
+          };
+          
+          let updatedClient = { ...client, documents: [...(client.documents || []), newLocalDoc] };
+
+          // If it's a POA, update the client's main expiration date for global alerts
+          if (newDocData.type === 'poa' && newDocData.expiryDate) {
+             updatedClient.poaExpiry = newDocData.expiryDate;
+          }
+
+          onUpdateClient(updatedClient);
+          setIsDocModalOpen(false);
+          setNewDocData({ type: 'poa', name: '' });
+          setSelectedFile(null);
+          
+          // تحديث قائمة المستندات
+          await loadClientDocuments();
+          
+        } catch (error) {
+          console.error('❌ Error uploading client document:', error);
+          alert('حدث خطأ أثناء رفع المستند. يرجى المحاولة مرة أخرى.');
         }
-
-        onUpdateClient(updatedClient);
-        setIsDocModalOpen(false);
-        setNewDocData({ type: 'poa', name: '' });
-        setSelectedFile(null);
      }
   };
 
@@ -142,6 +222,15 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
               <button onClick={handleOpenEdit} className="absolute top-3 left-3 p-1.5 bg-white/20 hover:bg-white/40 rounded text-white transition-colors">
                  <Edit3 className="w-4 h-4" />
               </button>
+              {onDeleteClient && (
+                <button 
+                  onClick={handleDeleteClient} 
+                  className="absolute top-3 right-3 p-1.5 bg-red-500/20 hover:bg-red-500/40 rounded text-white transition-colors" 
+                  title="حذف الموكل"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
            </div>
            <div className="px-6 pb-6 -mt-10 relative">
               <div className="flex justify-between items-end mb-4">
@@ -235,11 +324,11 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
            </div>
            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mb-1">إجمالي المستحقات</p>
-              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{totalDues.toLocaleString()} ج.م</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{(totalDues || 0).toLocaleString()} ج.م</p>
            </div>
            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mb-1">إجمالي المدفوعات</p>
-              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{totalPaid.toLocaleString()} ج.م</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{(totalPaid || 0).toLocaleString()} ج.م</p>
            </div>
         </div>
 
@@ -338,15 +427,49 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-           {/* Legacy POAs mapping + New Documents */}
-           {[...(client.documents || []), ...(client.poaFiles || []).map(f => ({
+           {/* Firebase Documents */}
+           {firebaseDocuments.length > 0 && (
+              <div className="col-span-full mb-4">
+                 <h4 className="font-medium text-slate-600 dark:text-slate-300 mb-3">المستندات المرفوعة (Firebase)</h4>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {firebaseDocuments.map(doc => (
+                       <div key={doc.id} className="bg-green-50 dark:bg-green-900/10 p-4 rounded-xl border border-green-200 dark:border-green-800">
+                          <div className="flex items-start justify-between">
+                             <div className="flex items-start gap-3">
+                                <div className="bg-green-100 dark:bg-green-800 p-2.5 rounded-lg text-green-600 dark:text-green-300">
+                                   <FileText className="w-5 h-5" />
+                                </div>
+                                <div>
+                                   <p className="font-bold text-green-900 dark:text-green-200 text-sm">{doc.title}</p>
+                                   <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                      <span className="text-[10px] bg-green-100 dark:bg-green-800 px-1.5 py-0.5 rounded text-green-700 dark:text-green-300">
+                                         {DocumentService.getFileIcon(doc.fileType)} {doc.category}
+                                      </span>
+                                      <span className="text-[10px] text-green-600 dark:text-green-400">
+                                         {DocumentService.formatFileSize(doc.fileSize)}
+                                      </span>
+                                   </div>
+                                </div>
+                             </div>
+                             <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-green-600 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-800 rounded-lg">
+                                <Eye className="w-4 h-4" />
+                             </a>
+                          </div>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+           )}
+
+           {/* Legacy Documents */}
+           {[...(client.documents || []), ...(client.poaFiles || [])].map(f => ({
               id: f.id,
               type: 'poa',
               name: f.name,
               url: f.url,
               uploadDate: f.uploadDate,
               expiryDate: client.poaExpiry
-           } as ClientDocument))].map((doc, i) => (
+           }) as ClientDocument).map((doc, i) => (
               <div key={i} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-start justify-between group">
                  <div className="flex items-start gap-3">
                     <div className="bg-slate-50 dark:bg-slate-700 p-2.5 rounded-lg text-slate-500 dark:text-slate-400">
@@ -373,8 +496,8 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
                     <Eye className="w-4 h-4" />
                  </a>
               </div>
-           ))}
-           {[...(client.documents || []), ...(client.poaFiles || [])].length === 0 && (
+           ))}}
+           {firebaseDocuments.length === 0 && [...(client.documents || []), ...(client.poaFiles || [])].length === 0 && (
               <div className="col-span-full py-12 text-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
                  <File className="w-10 h-10 mx-auto mb-2 opacity-50" />
                  <p>لا توجد مستندات مرفقة</p>
@@ -393,7 +516,7 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
            </h3>
            <div className="text-sm">
               <span className="text-slate-500 dark:text-slate-400 ml-2">إجمالي المتبقي:</span>
-              <span className="font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">{totalDues.toLocaleString()} ج.م</span>
+              <span className="font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">{(totalDues || 0).toLocaleString()} ج.م</span>
            </div>
         </div>
         <table className="w-full text-sm text-right">
@@ -409,13 +532,13 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {clientCases.map(c => {
                  if (!c.finance) return null;
-                 const remaining = c.finance.agreedFees - c.finance.paidAmount;
+                 const remaining = (c.finance.agreedFees || 0) - (c.finance.paidAmount || 0);
                  return (
                     <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200">
                        <td className="p-4 font-medium">{c.title}</td>
-                       <td className="p-4">{c.finance.agreedFees.toLocaleString()}</td>
-                       <td className="p-4 text-green-700 dark:text-green-400">{c.finance.paidAmount.toLocaleString()}</td>
-                       <td className="p-4 text-amber-700 dark:text-amber-400">{c.finance.expenses.toLocaleString()}</td>
+                       <td className="p-4">{(c.finance.agreedFees || 0).toLocaleString()}</td>
+                       <td className="p-4 text-green-700 dark:text-green-400">{(c.finance.paidAmount || 0).toLocaleString()}</td>
+                       <td className="p-4 text-amber-700 dark:text-amber-400">{(c.finance.expenses || 0).toLocaleString()}</td>
                        <td className={`p-4 font-bold ${remaining > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-400'}`}>
                           {remaining > 0 ? remaining.toLocaleString() : 'خالص'}
                        </td>

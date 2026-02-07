@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Client, Case, Hearing, ClientType, ClientStatus } from '../types';
-import { User, Phone, MapPin, Search, Plus, X, Save, Mail, FileText, Grid, List, Building2, Filter, Download, MessageCircle, ArrowUpRight, DollarSign, Calendar, FileSpreadsheet, Printer } from 'lucide-react';
+import { User, Phone, MapPin, Search, Plus, X, Save, Mail, FileText, Grid, List, Building2, Filter, Download, MessageCircle, ArrowUpRight, DollarSign, Calendar, FileSpreadsheet, Printer, Trash2 } from 'lucide-react';
 
 interface ClientsProps {
   clients: Client[];
@@ -10,10 +10,11 @@ interface ClientsProps {
   onClientClick: (clientId: string) => void;
   onAddClient?: (client: Client) => void;
   onUpdateClient?: (client: Client) => void;
+  onDeleteClient?: (clientId: string) => void;
   readOnly?: boolean;
 }
 
-const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientClick, onAddClient, onUpdateClient, readOnly = false }) => {
+const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientClick, onAddClient, onUpdateClient, onDeleteClient, readOnly = false }) => {
   // View State
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,13 +42,26 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
     const clientCases = cases.filter(c => c.clientId === clientId);
     const activeCases = clientCases.filter(c => c.status !== 'مغلقة' && c.status !== 'مؤرشفة');
     
-    // Calculate dues
+    // Calculate dues - Simple and clear calculation
     let totalDues = 0;
+    let totalAgreedFees = 0;
+    let totalPaidAmount = 0;
+    
     clientCases.forEach(c => {
        if (c.finance) {
-          totalDues += (c.finance.agreedFees - c.finance.paidAmount);
+          const agreedFees = c.finance.agreedFees || 0;
+          const paidAmount = c.finance.paidAmount || 0;
+          
+          totalAgreedFees += agreedFees;
+          totalPaidAmount += paidAmount;
+          
+          // Calculate dues for this case (fees - paid amount)
+          totalDues += (agreedFees - paidAmount);
        }
     });
+    
+    // Ensure totalDues is not negative
+    totalDues = Math.max(0, totalDues);
 
     // Find next hearing
     const clientCaseIds = clientCases.map(c => c.id);
@@ -59,6 +73,8 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
        totalCases: clientCases.length,
        activeCases: activeCases.length,
        totalDues,
+       totalAgreedFees,
+       totalPaidAmount,
        nextHearing: upcomingHearings[0]
     };
   };
@@ -74,7 +90,7 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
 
   const handleExportExcel = () => {
     // Define headers
-    const headers = ['الاسم', 'النوع', 'الرقم القومي/السجل', 'الهاتف', 'العنوان', 'الحالة', 'عدد القضايا', 'إجمالي المستحقات'];
+    const headers = ['الاسم', 'النوع', 'الرقم القومي/السجل', 'الهاتف', 'العنوان', 'الحالة', 'عدد القضايا', 'المستحقات', 'إجمالي الأتعاب'];
     
     // Map data
     const rows = filteredClients.map(client => {
@@ -87,7 +103,8 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
         `"${client.address || ''}"`,
         client.status,
         stats.totalCases,
-        stats.totalDues
+        stats.totalDues,
+        stats.totalAgreedFees
       ].join(',');
     });
 
@@ -121,7 +138,7 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
           <td>${client.phone}</td>
           <td>${client.status}</td>
           <td>${stats.totalCases}</td>
-          <td>${stats.totalDues.toLocaleString()}</td>
+          <td>${(stats.totalDues && stats.totalDues > 0) ? stats.totalDues.toLocaleString() : 'خالص'}</td>
         </tr>
       `;
     }).join('');
@@ -216,6 +233,37 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
     setIsModalOpen(false);
   };
 
+  const handleDeleteClient = (clientId: string) => {
+    if (onDeleteClient) {
+      // التحقق من وجود قضايا مرتبطة بالموكل
+      const clientCases = cases.filter(c => c.clientId === clientId);
+      
+      if (clientCases.length > 0) {
+        // عرض رسالة تحذير مع تفاصيل القضايا المرتبطة
+        const caseDetails = clientCases.map(c => `• ${c.title} (${c.caseNumber}/${c.year})`).join('\n');
+        const confirmed = window.confirm(
+          `⚠️ لا يمكن حذف هذا الموكل لأنه مرتبط بالقضايا التالية:\n\n${caseDetails}\n\n` +
+          `عدد القضايا: ${clientCases.length}\n\n` +
+          `يجب حذف القضايا أولاً أو نقلها إلى موكل آخر قبل حذف الموكل.\n\n` +
+          `هل تريد عرض القضايا المرتبطة؟`
+        );
+        
+        if (confirmed) {
+          // الانتقال إلى صفحة القضايا
+          // يمكن إضافة فلترة للقضايا هنا إذا لزم الأمر
+          console.log('🔍 Redirecting to cases page for client:', clientId);
+        }
+        return;
+      }
+      
+      // تأكيد الحذف (فقط إذا لم يكن هناك قضايا مرتبطة)
+      const confirmed = window.confirm('هل أنت متأكد من حذف هذا الموكل؟ لا يمكن التراجع عن هذا الإجراء.');
+      if (confirmed) {
+        onDeleteClient(clientId);
+      }
+    }
+  };
+
   const handleWhatsApp = (phone: string) => {
      window.open(`https://wa.me/2${phone}`, '_blank');
   };
@@ -231,6 +279,25 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
       {filteredClients.map(client => {
         const stats = getClientCaseStats(client.id);
         const hasDues = stats.totalDues > 0;
+        const clientCases = cases.filter(c => c.clientId === client.id);
+        
+        // Debug logging - Enhanced
+        console.log(`Client ${client.name} detailed stats:`, {
+          clientCases: clientCases.length,
+          casesWithFinance: clientCases.filter(c => c.finance).length,
+          totalDues: stats.totalDues,
+          totalAgreedFees: stats.totalAgreedFees,
+          totalPaidAmount: stats.totalPaidAmount,
+          hasDues,
+          caseDetails: clientCases.map(c => ({
+            id: c.id,
+            title: c.title,
+            hasFinance: !!c.finance,
+            agreedFees: c.finance?.agreedFees,
+            paidAmount: c.finance?.paidAmount,
+            caseDues: c.finance ? (c.finance.agreedFees || 0) - (c.finance.paidAmount || 0) : 0
+          }))
+        });
         
         return (
           <div key={client.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all group relative overflow-hidden">
@@ -264,7 +331,14 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
                    </div>
                    <div className={`p-2 rounded-lg border ${hasDues ? 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800' : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800'}`}>
                       <p className={`text-xs mb-1 flex items-center gap-1 ${hasDues ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}><DollarSign className="w-3 h-3"/> المستحقات</p>
-                      <p className={`font-bold ${hasDues ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>{stats.totalDues > 0 ? stats.totalDues.toLocaleString() : 'خالص'}</p>
+                      <p className={`font-bold ${hasDues ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>
+                        {(stats.totalDues && stats.totalDues > 0) ? stats.totalDues.toLocaleString() : 'خالص'}
+                      </p>
+                      {(stats.totalAgreedFees && stats.totalAgreedFees > 0) && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          من {stats.totalAgreedFees.toLocaleString()} إجمالي
+                        </p>
+                      )}
                    </div>
                 </div>
 
@@ -288,6 +362,15 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
                       <button onClick={() => handleWhatsApp(client.phone)} className="p-2 text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-green-100 dark:hover:bg-green-900/30 hover:text-green-600 rounded-lg transition-colors" title="واتساب">
                          <MessageCircle className="w-4 h-4" />
                       </button>
+                      {!readOnly && onDeleteClient && (
+                        <button 
+                          onClick={() => handleDeleteClient(client.id)} 
+                          className="p-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-700 rounded-lg transition-colors" 
+                          title="حذف الموكل"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                    </div>
                 </div>
              </div>
@@ -307,7 +390,7 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
                 <th className="p-4">الهاتف</th>
                 <th className="p-4">الحالة</th>
                 <th className="p-4">القضايا (نشط/كلي)</th>
-                <th className="p-4">المديونية</th>
+                <th className="p-4">المستحقات</th>
                 <th className="p-4">الإجراءات</th>
              </tr>
           </thead>
@@ -331,8 +414,17 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
                          <span className="font-bold">{stats.activeCases}</span>
                          <span className="text-slate-400 dark:text-slate-500 text-xs"> / {stats.totalCases}</span>
                       </td>
-                      <td className="p-4 font-bold text-red-600 dark:text-red-400">
-                         {stats.totalDues > 0 ? stats.totalDues.toLocaleString() : '-'}
+                      <td className="p-4">
+                         <div className="text-right">
+                           <div className="font-bold text-red-600 dark:text-red-400">
+                              {(stats.totalDues && stats.totalDues > 0) ? stats.totalDues.toLocaleString() : 'خالص'}
+                           </div>
+                           {(stats.totalAgreedFees && stats.totalAgreedFees > 0) && (
+                             <div className="text-xs text-slate-500 dark:text-slate-400">
+                               من {stats.totalAgreedFees.toLocaleString()}
+                             </div>
+                           )}
+                         </div>
                       </td>
                       <td className="p-4">
                          <button onClick={() => onClientClick(client.id)} className="text-primary-600 dark:text-primary-400 hover:underline font-bold text-xs">عرض الملف</button>
