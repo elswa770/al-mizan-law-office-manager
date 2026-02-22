@@ -443,14 +443,35 @@ const Settings: React.FC<SettingsProps> = ({
     try {
       const results = [];
       
-      // فحص سرعة الاتصال
+      // فحص سرعة الاتصال باستخدام API موثوق
       const startTest = Date.now();
-      const response = await fetch('https://httpbin.org/get', { 
-        method: 'GET',
-        cache: 'no-cache'
-      });
-      const latency = Date.now() - startTest;
-      results.push(`🌐 سرعة الاتصال: ${latency}ms`);
+      let latency = 0;
+      let connectionStatus = 'فشل';
+      
+      try {
+        // استخدام API بسيط وموثوق
+        const response = await fetch('https://api.ipify.org?format=json', {
+          method: 'GET',
+          mode: 'cors',
+          cache: 'no-cache',
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+        
+        if (response.ok) {
+          latency = Date.now() - startTest;
+          connectionStatus = 'نجح';
+          results.push(`🌐 سرعة الاتصال: ${latency}ms`);
+          results.push(`🌐 حالة الاتصال: ${connectionStatus}`);
+        } else {
+          results.push(`🌐 فشل الاتصال: ${response.status}`);
+        }
+      } catch (error) {
+        results.push(`🌐 خطأ في الاتصال: ${error.message}`);
+        latency = 9999;
+        connectionStatus = 'فشل';
+      }
       
       // فحص حالة Firebase
       const firebaseStart = Date.now();
