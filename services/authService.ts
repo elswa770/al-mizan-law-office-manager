@@ -33,6 +33,19 @@ export const loginUser = async (email: string, password: string): Promise<AuthUs
     };
   } catch (error: any) {
     console.error('Login error:', error);
+    
+    // Log failed login attempt
+    try {
+      const { logFailedLogin, getClientIP, getUserAgent, getLocationFromIP } = await import('../utils/loginLogger');
+      const ip = getClientIP();
+      const userAgent = getUserAgent();
+      const location = await getLocationFromIP(ip);
+      
+      await logFailedLogin(email, ip, userAgent, location);
+    } catch (logError) {
+      console.error('Failed to log login attempt:', logError);
+    }
+    
     throw new Error(getAuthErrorMessage(error.code));
   }
 };

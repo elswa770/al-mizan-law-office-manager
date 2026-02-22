@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Gavel, Lock, User, ArrowRight, Mail } from 'lucide-react';
 import { resetPassword } from '../services/authService';
+import { logFailedLogin, getClientIP, getUserAgent, getLocationFromIP } from '../utils/loginLogger';
 
 interface LoginProps {
   onLogin: (email: string, password: string) => Promise<boolean>;
@@ -60,9 +61,21 @@ const Login: React.FC<LoginProps> = ({ onLogin, onShowRegister }) => {
     try {
       const success = await onLogin(email, password);
       if (!success) {
+        // Log failed login attempt
+        const ip = getClientIP();
+        const userAgent = getUserAgent();
+        const location = await getLocationFromIP(ip);
+        
+        await logFailedLogin(email, ip, userAgent, location);
         setError('فشل في تسجيل الدخول');
       }
     } catch (err: any) {
+      // Log failed login attempt
+      const ip = getClientIP();
+      const userAgent = getUserAgent();
+      const location = await getLocationFromIP(ip);
+      
+      await logFailedLogin(email, ip, userAgent, location);
       setError(err.message || 'حدث خطأ أثناء تسجيل الدخول');
     } finally {
       setIsLoading(false);

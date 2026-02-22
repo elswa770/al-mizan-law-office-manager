@@ -11,6 +11,7 @@ import {
   limit,
   getDoc,
   setDoc,
+  onSnapshot,
   serverTimestamp
 } from "firebase/firestore";
 import { db } from "./firebaseConfig";
@@ -49,7 +50,17 @@ export const addCase = async (caseData: Omit<Case, 'id'>): Promise<string> => {
 
 export const updateCase = async (id: string, caseData: Partial<Case>) => {
   const docRef = doc(db, "cases", id);
-  await updateDoc(docRef, caseData);
+  try {
+    await updateDoc(docRef, caseData);
+  } catch (error) {
+    // If document doesn't exist, create it with setDoc
+    if (error instanceof Error && error.message.includes('No document to update')) {
+      console.log(`⚠️ Case ${id} not found, creating new document`);
+      await setDoc(docRef, { ...caseData, id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    } else {
+      throw error;
+    }
+  }
 };
 
 // --- Hearings ---

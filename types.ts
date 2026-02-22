@@ -253,3 +253,148 @@ export interface WorkLocation {
   notes?: string;
   phone?: string;
 }
+
+export interface SMTPSettings {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  secure: boolean;
+  fromEmail: string;
+  fromName: string;
+}
+
+export interface WhatsAppSettings {
+  apiKey: string;
+  phoneNumberId: string;
+  businessAccountId?: string;
+  enabled: boolean;
+}
+
+export interface AlertPreferences {
+  email: boolean;
+  whatsapp: boolean;
+  system: boolean;
+  
+  // Specific Toggles
+  hearings: boolean;
+  tasks: boolean;
+  deadlines: boolean;
+  systemUpdates: boolean;
+  
+  // Timing
+  hearingReminderDays: number; // Days before hearing
+  taskReminderDays: number; // Days before deadline
+}
+
+export interface NotificationSettings {
+  smtp: SMTPSettings;
+  whatsapp: WhatsAppSettings;
+  preferences: AlertPreferences;
+}
+
+export interface ReportTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  type: 'financial' | 'operational' | 'case' | 'client' | 'custom';
+  sections: string[]; // IDs of sections to include
+  filters?: Record<string, any>;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface ScheduledReport {
+  id: string;
+  templateId: string;
+  frequency: 'daily' | 'weekly' | 'monthly';
+  recipients: string[]; // Email addresses
+  format: 'pdf' | 'excel' | 'word';
+  nextRun: string;
+  lastRun?: string;
+  active: boolean;
+}
+
+export interface ReportSignature {
+  id: string;
+  userId: string;
+  imageUrl: string; // Base64 or URL
+  uploadedAt: string;
+}
+
+export interface LoginAttempt {
+  id: string;
+  ip: string;
+  timestamp: string;
+  success: boolean;
+  username: string;
+  userAgent: string;
+}
+
+export interface ActiveSession {
+  id: string;
+  userId: string;
+  ip: string;
+  device: string;
+  browser: string;
+  location: string;
+  lastActive: string;
+  isCurrent: boolean;
+}
+
+export interface SecuritySettings {
+  twoFactorEnabled: boolean;
+  passwordPolicy: {
+    minLength: number;
+    requireNumbers: boolean;
+    requireSymbols: boolean;
+    requireUppercase: boolean;
+    expiryDays: number;
+  };
+  ipWhitelist: string[];
+  maxLoginAttempts: number;
+  sessionTimeoutMinutes: number;
+}
+
+export interface DataManagementSettings {
+  autoBackupFrequency: 'daily' | 'weekly' | 'monthly' | 'off';
+  autoBackupTime: string;
+  retainBackupsCount: number;
+  archiveClosedCasesAfterDays: number;
+  deleteArchivedAfterYears: number;
+  enableAutoArchive: boolean;
+}
+
+export interface SystemHealth {
+  status: 'healthy' | 'warning' | 'critical';
+  lastCheck: string;
+  components: {
+    database: 'operational' | 'degraded' | 'down';
+    api: 'operational' | 'degraded' | 'down';
+    storage: 'operational' | 'degraded' | 'down';
+    backup: 'operational' | 'degraded' | 'down';
+  };
+}
+
+export interface SystemError {
+  id: string;
+  timestamp: string;
+  level: 'error' | 'warning' | 'info';
+  message: string;
+  source: string;
+  resolved: boolean;
+}
+
+export interface ResourceUsage {
+  cpu: number; // percentage
+  memory: number; // percentage
+  storage: number; // percentage used
+  uptime: string;
+}
+
+export interface MaintenanceSettings {
+  autoUpdate: boolean;
+  errorReporting: boolean;
+  performanceMonitoring: boolean;
+  maintenanceWindow: string; // e.g., "03:00"
+}

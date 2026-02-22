@@ -1,14 +1,17 @@
 
-import React, { useState, useMemo } from 'react';
-import { Case, Client, Hearing, Task, CaseStatus, HearingStatus } from '../types';
+import React, { useState, useMemo, useRef } from 'react';
+import { Case, Client, Hearing, Task, CaseStatus, HearingStatus, ReportTemplate, ScheduledReport } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
   PieChart, Pie, Cell, AreaChart, Area, LineChart, Line 
 } from 'recharts';
 import { 
   TrendingUp, TrendingDown, DollarSign, Activity, Scale, Gavel, 
-  Users, AlertCircle, Calendar, Printer, Filter, PieChart as PieIcon, Download, Building2, FileText, List
+  Users, AlertCircle, Calendar, Printer, Filter, PieChart as PieIcon, Download, Building2, FileText, List,
+  Plus, Edit3, Trash2, Clock, Mail, FileSpreadsheet, File as FileIcon, PenTool, CheckCircle
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface ReportsProps {
   cases: Case[];
@@ -20,8 +23,28 @@ interface ReportsProps {
 const COLORS = ['#0ea5e9', '#22c55e', '#eab308', '#ef4444', '#8b5cf6', '#64748b', '#f97316', '#14b8a6'];
 
 const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'financial' | 'operational'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'financial' | 'operational' | 'builder' | 'scheduled'>('overview');
   const [dateRange, setDateRange] = useState('year'); // month, year, all
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  // --- Report Builder State ---
+  const [templates, setTemplates] = useState<ReportTemplate[]>([
+    { id: '1', name: 'التقرير الشهري الشامل', type: 'custom', sections: ['financial', 'operational'], createdBy: 'Admin', createdAt: '2024-01-01' },
+    { id: '2', name: 'تقرير القضايا المتعثرة', type: 'case', sections: ['cases'], filters: { status: 'stalled' }, createdBy: 'Admin', createdAt: '2024-01-15' }
+  ]);
+  
+  const [scheduledReports, setScheduledReports] = useState<ScheduledReport[]>([
+    { id: '1', templateId: '1', frequency: 'monthly', recipients: ['manager@almizan.com'], format: 'pdf', nextRun: '2024-03-01', active: true }
+  ]);
+
+  const [isBuilderModalOpen, setIsBuilderModalOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [selectedSections, setSelectedSections] = useState<string[]>([]);
+
+  // --- Signature State ---
+  const [signature, setSignature] = useState<string | null>(null);
+  const [isSigning, setIsSigning] = useState(false);
+
 
   // --- 1. Data Aggregation Engines ---
 
@@ -97,15 +120,256 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
   }, [hearings, tasks]);
 
 
-  // --- Helper Functions ---
-  const handlePrint = () => {
-    // Timeout ensures UI is fully rendered before print dialog opens
+  // --- Export & Signature Handlers ---
+  const handleExportPDF = async () => {
+    const element = document.getElementById('report-content');
+    if (!element) return;
+    
+    try {
+      const canvas = await html2canvas(element, { scale: 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`AlMizan_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error('PDF Export Error:', err);
+      alert('حدث خطأ أثناء تصدير التقرير');
+    }
+  };
+
+  const handleExportExcel = () => {
+    // Simple CSV Export Simulation
+    const headers = ['Category', 'Value'];
+    const rows = [
+      ['Total Collected', financialStats.totalCollected],
+      ['Active Cases', caseStats.total],
+      ['Hearings', hearings.length],
+      ['Task Completion', `${operationalStats.taskCompletionRate}%`]
+    ];
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n" 
+      + rows.map(e => e.join(",")).join("\n");
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "report_data.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportWord = () => {
+    // Simple HTML to Word (MHT/HTML) Simulation
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Export HTML to Word Document with JavaScript</title></head><body>";
+    const footer = "</body></html>";
+    const sourceHTML = header + document.getElementById('report-content')?.innerHTML + footer;
+    
+    const source = 'data:application/vnd.ms-word;charset=utf-8,' + encodeURIComponent(sourceHTML);
+    const fileDownload = document.createElement("a");
+    document.body.appendChild(fileDownload);
+    fileDownload.href = source;
+    fileDownload.download = 'report.doc';
+    fileDownload.click();
+    document.body.removeChild(fileDownload);
+  };
+
+  const handleSignReport = () => {
+    setIsSigning(true);
+    // Simulate signature process
     setTimeout(() => {
-      window.print();
-    }, 100);
+      setSignature('https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Signature_sample.svg/1200px-Signature_sample.svg.png'); // Mock signature
+      setIsSigning(false);
+    }, 1500);
   };
 
   // --- Render Functions ---
+
+  const renderBuilderTab = () => (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-xl font-bold text-slate-800 dark:text-white">مصمم التقارير المخصص</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">أنشئ قوالب تقارير مخصصة لاحتياجاتك</p>
+        </div>
+        <button 
+          onClick={() => setIsBuilderModalOpen(true)}
+          className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center gap-2 shadow-sm"
+        >
+          <Plus className="w-4 h-4" /> قالب جديد
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {templates.map(template => (
+          <div key={template.id} className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all group relative">
+            <div className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+              <button className="p-1.5 text-slate-400 hover:text-indigo-600 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                <Edit3 className="w-4 h-4" />
+              </button>
+              <button className="p-1.5 text-slate-400 hover:text-red-600 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center mb-4">
+              <PenTool className="w-6 h-6" />
+            </div>
+            <h4 className="font-bold text-slate-800 dark:text-white mb-1">{template.name}</h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">تم الإنشاء بواسطة {template.createdBy} • {template.createdAt}</p>
+            
+            <div className="flex flex-wrap gap-2 mb-4">
+              {template.sections.map(sec => (
+                <span key={sec} className="px-2 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] rounded-md font-bold">
+                  {sec === 'financial' ? 'المالية' : sec === 'operational' ? 'العمليات' : sec === 'cases' ? 'القضايا' : sec}
+                </span>
+              ))}
+            </div>
+
+            <button className="w-full py-2 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 rounded-lg text-sm font-bold hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
+              استخدام القالب
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Builder Modal */}
+      {isBuilderModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95">
+            <h3 className="font-bold text-lg mb-4 text-slate-800 dark:text-white">إنشاء قالب تقرير جديد</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">اسم القالب</label>
+                <input 
+                  type="text" 
+                  className="w-full border p-2 rounded-lg dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                  value={newTemplateName}
+                  onChange={e => setNewTemplateName(e.target.value)}
+                  placeholder="مثال: تقرير الأداء الربع سنوي"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">الأقسام المضمنة</label>
+                <div className="space-y-2">
+                  {['financial', 'operational', 'cases', 'clients'].map(sec => (
+                    <label key={sec} className="flex items-center gap-2 cursor-pointer p-2 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700">
+                      <input 
+                        type="checkbox" 
+                        className="accent-indigo-600"
+                        checked={selectedSections.includes(sec)}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedSections([...selectedSections, sec]);
+                          else setSelectedSections(selectedSections.filter(s => s !== sec));
+                        }}
+                      />
+                      <span className="text-sm text-slate-700 dark:text-slate-300 capitalize">{sec}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  onClick={() => setIsBuilderModalOpen(false)}
+                  className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300 font-bold"
+                >
+                  إلغاء
+                </button>
+                <button 
+                  onClick={() => {
+                    setTemplates([...templates, {
+                      id: Math.random().toString(),
+                      name: newTemplateName,
+                      type: 'custom',
+                      sections: selectedSections,
+                      createdBy: 'Current User',
+                      createdAt: new Date().toISOString().split('T')[0]
+                    }]);
+                    setIsBuilderModalOpen(false);
+                  }}
+                  className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700"
+                >
+                  حفظ القالب
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderScheduledTab = () => (
+    <div className="space-y-6 animate-in fade-in">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h3 className="text-xl font-bold text-slate-800 dark:text-white">التقارير المجدولة</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">إدارة التقارير التي يتم إرسالها تلقائياً</p>
+        </div>
+        <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center gap-2 shadow-sm">
+          <Clock className="w-4 h-4" /> جدولة تقرير جديد
+        </button>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <table className="w-full text-right">
+          <thead className="bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs uppercase font-bold border-b border-slate-200 dark:border-slate-600">
+            <tr>
+              <th className="p-4">اسم التقرير</th>
+              <th className="p-4">التكرار</th>
+              <th className="p-4">المستلمين</th>
+              <th className="p-4">الصيغة</th>
+              <th className="p-4">التشغيل القادم</th>
+              <th className="p-4">الحالة</th>
+              <th className="p-4 text-center">الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
+            {scheduledReports.map(report => (
+              <tr key={report.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-slate-800 dark:text-slate-200">
+                <td className="p-4 font-bold">
+                  {templates.find(t => t.id === report.templateId)?.name || 'تقرير مخصص'}
+                </td>
+                <td className="p-4">
+                  <span className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs font-bold">
+                    {report.frequency === 'monthly' ? 'شهري' : report.frequency === 'weekly' ? 'أسبوعي' : 'يومي'}
+                  </span>
+                </td>
+                <td className="p-4 text-slate-500 dark:text-slate-400 text-xs">
+                  {report.recipients.join(', ')}
+                </td>
+                <td className="p-4 uppercase font-mono text-xs font-bold">
+                  {report.format}
+                </td>
+                <td className="p-4 font-mono text-xs">
+                  {report.nextRun}
+                </td>
+                <td className="p-4">
+                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${report.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {report.active ? 'نشط' : 'متوقف'}
+                  </span>
+                </td>
+                <td className="p-4">
+                  <div className="flex items-center justify-center gap-2">
+                    <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900 rounded-lg transition-colors">
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900 rounded-lg transition-colors">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 
   const renderSummaryCard = (title: string, value: string | number, subtext: string, icon: any, colorClass: string) => (
     <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-between transition-all hover:shadow-md print:border-slate-300 print:shadow-none break-inside-avoid print:break-inside-avoid">
@@ -138,8 +402,7 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
                  التدفقات النقدية (آخر 6 أشهر)
               </h3>
               <div className="h-72 w-full text-xs print:h-[300px]">
-                 {financialStats.incomeTrend && financialStats.incomeTrend.length > 0 ? (
-                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={financialStats.incomeTrend}>
                        <defs>
                           <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
@@ -155,11 +418,6 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
                        <Area type="monotone" dataKey="income" stroke="#10b981" fillOpacity={1} fill="url(#colorIncome)" name="الدخل" isAnimationActive={false} />
                     </AreaChart>
                  </ResponsiveContainer>
-                 ) : (
-                   <div className="h-full w-full flex items-center justify-center text-slate-500 dark:text-slate-400">
-                     لا توجد بيانات متاحة
-                   </div>
-                 )}
               </div>
            </div>
 
@@ -170,8 +428,7 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
                  توزيع حالات القضايا
               </h3>
               <div className="h-72 w-full text-xs flex items-center justify-center print:h-[300px]">
-                 {caseStats.statusData && caseStats.statusData.length > 0 ? (
-                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                        <Pie
                           data={caseStats.statusData}
@@ -191,11 +448,6 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
                        <Legend verticalAlign="bottom" height={36} />
                     </PieChart>
                  </ResponsiveContainer>
-                 ) : (
-                   <div className="h-full w-full flex items-center justify-center text-slate-500 dark:text-slate-400">
-                     لا توجد بيانات متاحة
-                   </div>
-                 )}
               </div>
            </div>
         </div>
@@ -275,8 +527,7 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
               إحصائيات الجلسات والقرارات
            </h3>
            <div className="h-72 w-full text-xs print:h-[250px]">
-              {operationalStats.hearingData && operationalStats.hearingData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <ResponsiveContainer width="100%" height="100%">
                  <BarChart data={operationalStats.hearingData} layout="horizontal" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94a3b8" strokeOpacity={0.2} />
                     <XAxis dataKey="name" tick={{fontSize: 12, fill: '#64748b'}} stroke="#cbd5e1" />
@@ -289,11 +540,6 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
                     </Bar>
                  </BarChart>
               </ResponsiveContainer>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-slate-500 dark:text-slate-400">
-                  لا توجد بيانات متاحة
-                </div>
-              )}
            </div>
         </div>
 
@@ -307,8 +553,7 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
                  توزيع القضايا (رسم بياني)
               </h3>
               <div className="h-64 w-full text-xs print:h-[250px]">
-                 {caseStats.courtData && caseStats.courtData.length > 0 ? (
-                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                        <Pie
                           data={caseStats.courtData}
@@ -328,11 +573,6 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
                        <Legend verticalAlign="middle" align="right" layout="vertical" />
                     </PieChart>
                  </ResponsiveContainer>
-                 ) : (
-                   <div className="h-full w-full flex items-center justify-center text-slate-500 dark:text-slate-400">
-                     لا توجد بيانات متاحة
-                   </div>
-                 )}
               </div>
            </div>
 
@@ -415,50 +655,68 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
        `}</style>
 
        {/* 1. Header */}
-       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 no-print">
+       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 no-print">
           <div>
              <h2 className="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                <Activity className="w-6 h-6 text-primary-600" />
+                <Activity className="w-6 h-6 text-indigo-600" />
                 التقارير والتحليلات
              </h2>
              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">مركز ذكاء الأعمال ومؤشرات الأداء</p>
           </div>
-          <div className="flex items-center gap-2">
-             <div className="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex text-xs font-bold">
+          <div className="flex flex-wrap items-center gap-2">
+             <div className="bg-slate-100 dark:bg-slate-700 p-1 rounded-lg flex text-xs font-bold overflow-x-auto max-w-full">
                 <button 
                   onClick={() => setActiveTab('overview')}
-                  className={`px-3 py-1.5 rounded-md transition-all ${activeTab === 'overview' ? 'bg-white dark:bg-slate-600 text-primary-700 dark:text-primary-300 shadow' : 'text-slate-500 dark:text-slate-400'}`}
+                  className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${activeTab === 'overview' ? 'bg-white dark:bg-slate-600 text-indigo-700 dark:text-indigo-300 shadow' : 'text-slate-500 dark:text-slate-400'}`}
                 >
                    نظرة عامة
                 </button>
                 <button 
                   onClick={() => setActiveTab('financial')}
-                  className={`px-3 py-1.5 rounded-md transition-all ${activeTab === 'financial' ? 'bg-white dark:bg-slate-600 text-emerald-700 dark:text-emerald-400 shadow' : 'text-slate-500 dark:text-slate-400'}`}
+                  className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${activeTab === 'financial' ? 'bg-white dark:bg-slate-600 text-emerald-700 dark:text-emerald-400 shadow' : 'text-slate-500 dark:text-slate-400'}`}
                 >
                    التقرير المالي
                 </button>
                 <button 
                   onClick={() => setActiveTab('operational')}
-                  className={`px-3 py-1.5 rounded-md transition-all ${activeTab === 'operational' ? 'bg-white dark:bg-slate-600 text-indigo-700 dark:text-indigo-400 shadow' : 'text-slate-500 dark:text-slate-400'}`}
+                  className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${activeTab === 'operational' ? 'bg-white dark:bg-slate-600 text-blue-700 dark:text-blue-400 shadow' : 'text-slate-500 dark:text-slate-400'}`}
                 >
                    الأداء التشغيلي
                 </button>
+                <button 
+                  onClick={() => setActiveTab('builder')}
+                  className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${activeTab === 'builder' ? 'bg-white dark:bg-slate-600 text-purple-700 dark:text-purple-400 shadow' : 'text-slate-500 dark:text-slate-400'}`}
+                >
+                   مصمم التقارير
+                </button>
+                <button 
+                  onClick={() => setActiveTab('scheduled')}
+                  className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${activeTab === 'scheduled' ? 'bg-white dark:bg-slate-600 text-amber-700 dark:text-amber-400 shadow' : 'text-slate-500 dark:text-slate-400'}`}
+                >
+                   المجدولة
+                </button>
              </div>
              
-             {/* Print & Export Buttons */}
+             {/* Export Actions */}
+             <div className="flex items-center gap-1 border-r border-slate-200 dark:border-slate-600 pr-2 mr-2">
+                <button onClick={handleExportPDF} className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="تصدير PDF">
+                   <FileIcon className="w-5 h-5" />
+                </button>
+                <button onClick={handleExportExcel} className="p-2 text-slate-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors" title="تصدير Excel">
+                   <FileSpreadsheet className="w-5 h-5" />
+                </button>
+                <button onClick={handleExportWord} className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title="تصدير Word">
+                   <FileText className="w-5 h-5" />
+                </button>
+             </div>
+
              <button 
-               onClick={handlePrint}
-               className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm" 
-               title="حفظ كملف PDF عبر نافذة الطباعة"
+               onClick={handleSignReport}
+               disabled={isSigning || !!signature}
+               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-sm ${signature ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}
              >
-                <Download className="w-4 h-4" /> <span>تصدير PDF</span>
-             </button>
-             <button 
-               onClick={handlePrint}
-               className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg transition-colors border border-slate-200 dark:border-slate-600" 
-               title="طباعة التقرير"
-             >
-                <Printer className="w-5 h-5" />
+                {isSigning ? 'جاري التوقيع...' : signature ? 'تم التوقيع' : 'توقيع التقرير'}
+                {signature ? <CheckCircle className="w-4 h-4" /> : <PenTool className="w-4 h-4" />}
              </button>
           </div>
        </div>
@@ -476,10 +734,23 @@ const Reports: React.FC<ReportsProps> = ({ cases, clients, hearings, tasks }) =>
        </div>
 
        {/* 2. Content */}
-       <div className="min-h-[500px]">
+       <div className="min-h-[500px]" id="report-content" ref={reportRef}>
           {activeTab === 'overview' && renderOverviewTab()}
           {activeTab === 'financial' && renderFinancialTab()}
           {activeTab === 'operational' && renderOperationalTab()}
+          {activeTab === 'builder' && renderBuilderTab()}
+          {activeTab === 'scheduled' && renderScheduledTab()}
+          
+          {/* Signature Footer */}
+          {signature && (activeTab === 'overview' || activeTab === 'financial' || activeTab === 'operational') && (
+            <div className="mt-8 pt-8 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+              <div className="text-center">
+                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-2">يعتمد، المدير العام</p>
+                <img src={signature} alt="Signature" className="h-16 object-contain opacity-80" />
+                <p className="text-xs text-slate-400 mt-1">{new Date().toLocaleDateString('ar-EG')}</p>
+              </div>
+            </div>
+          )}
        </div>
     </div>
   );
