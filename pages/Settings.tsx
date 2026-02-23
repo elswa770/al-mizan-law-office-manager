@@ -9,7 +9,7 @@ import {
   Plus, Edit3, Trash2, Check, X, Eye, 
   Save, AlertCircle, Ban, Pencil, Key,
   Building, Phone, Mail, Globe, Upload, FileText, 
-  Bell, Moon, Sun, Database, Download, Clock, Cloud, Loader2, FileJson, History, HardDrive, RotateCcw,
+  Bell, Moon, Sun, Database, Download, Clock, Cloud, Loader2, FileJson, History, HardDrive, RotateCcw, List,
   Smartphone, LogOut, ShieldAlert, Fingerprint, Globe2, AlertTriangle, Archive, FileUp, RefreshCw, CalendarClock, Trash,
   Wrench, Activity, Cpu, AlertOctagon, CheckCircle2, Terminal, Server
 } from 'lucide-react';
@@ -1142,7 +1142,7 @@ const Settings: React.FC<SettingsProps> = ({
           <h4 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
              <RefreshCw className="w-5 h-5 text-green-600" /> نقل واستيراد البيانات
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <div className="p-4 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
               <FileUp className="w-8 h-8 text-slate-400 mx-auto mb-2" />
               <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">استيراد من Excel</h5>
@@ -1191,6 +1191,32 @@ const Settings: React.FC<SettingsProps> = ({
                 className="text-sm text-blue-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isBackingUp ? 'جاري الاختبار...' : 'اختبار الآن'}
+              </button>
+            </div>
+
+            <div className="p-4 border border-dashed border-purple-300 dark:border-purple-600 rounded-xl text-center hover:bg-purple-50 dark:hover:bg-purple-700/50 transition-colors">
+              <List className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">عرض النسخ الاحتياطية</h5>
+              <p className="text-xs text-slate-500 mb-3">قائمة النسخ من Firebase</p>
+              <button 
+                onClick={handleListFirebaseBackups}
+                disabled={isBackingUp}
+                className="text-sm text-purple-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isBackingUp ? 'جاري العرض...' : 'عرض الآن'}
+              </button>
+            </div>
+
+            <div className="p-4 border border-dashed border-orange-300 dark:border-orange-600 rounded-xl text-center hover:bg-orange-50 dark:hover:bg-orange-700/50 transition-colors">
+              <RotateCcw className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">استعادة من Firebase</h5>
+              <p className="text-xs text-slate-500 mb-3">استعادة نسخة من السحابة</p>
+              <button 
+                onClick={handleRestoreFromFirebase}
+                disabled={isRestoring}
+                className="text-sm text-orange-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isRestoring ? 'جاري الاستعادة...' : 'استعادة الآن'}
               </button>
             </div>
           </div>
@@ -1458,6 +1484,105 @@ const Settings: React.FC<SettingsProps> = ({
       } finally {
         setIsBackingUp(false);
       }
+    }
+  };
+
+  // List available backups from Firebase
+  const handleListFirebaseBackups = async () => {
+    setIsBackingUp(true);
+    try {
+      const backupsQuery = query(collection(db, 'backups'));
+      const querySnapshot = await getDocs(backupsQuery);
+      
+      if (querySnapshot.empty) {
+        alert('📭 لا توجد نسخ احتياطية في Firebase');
+        return;
+      }
+
+      const backupsList = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          filename: data.filename || doc.id,
+          uploadedAt: data.uploadedAt || data.metadata?.generatedAt,
+          type: data.metadata?.backupType || 'manual',
+          records: data.metadata?.recordCounts || {}
+        };
+      }).sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+
+      let backupText = '📋 النسخ الاحتياطية المتاحة في Firebase:\n\n';
+      backupsList.forEach((backup, index) => {
+        const date = new Date(backup.uploadedAt).toLocaleString('ar-EG');
+        backupText += `${index + 1}. ${backup.filename}\n`;
+        backupText += `   📅 التاريخ: ${date}\n`;
+        backupText += `   🔄 النوع: ${backup.type === 'manual' ? 'يدوي' : 'تلقائي'}\n`;
+        backupText += `   📊 السجلات: قضايا(${backup.records.cases || 0}) عملاء(${backup.records.clients || 0}) جلسات(${backup.records.hearings || 0})\n`;
+        backupText += `   🔑 المعرف: ${backup.id}\n\n`;
+      });
+
+      backupText += '💡 لاستعادة نسخة احتياطية، انسخ المعرف وألصقه في خانة استعادة النسخة الاحتياطية.';
+      
+      alert(backupText);
+      
+    } catch (error) {
+      console.error('Error listing backups:', error);
+      alert('❌ فشل عرض النسخ الاحتياطية: ' + error.message);
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  // Restore backup from Firebase using backup ID
+  const handleRestoreFromFirebase = async () => {
+    const backupId = prompt('🔑 أدخل معرف النسخة الاحتياطية الذي تريد استعادته:\n\n(لعرض المعرفات المتاحة، اضغط على "عرض النسخ الاحتياطية" أولاً)');
+    
+    if (!backupId) return;
+
+    if (!confirm("⚠️ تحذير: استعادة النسخة الاحتياطية ستقوم باستبدال جميع البيانات الحالية بالبيانات الموجودة في النسخة الاحتياطية. هل أنت متأكد من المتابعة؟")) {
+      return;
+    }
+
+    setIsRestoring(true);
+    try {
+      const backupRef = doc(db, 'backups', backupId);
+      const backupSnap = await getDoc(backupRef);
+      
+      if (!backupSnap.exists()) {
+        throw new Error('النسخة الاحتياطية المطلوبة غير موجودة');
+      }
+
+      const backupData = backupSnap.data();
+
+      if (!backupData.data || !backupData.metadata || backupData.metadata.appName !== 'Al-Mizan') {
+        throw new Error("ملف غير صالح أو تالف. تأكد من أن هذه نسخة احتياطية من هذا النظام.");
+      }
+
+      // Restore data
+      if (onRestoreData) {
+        onRestoreData(backupData.data);
+        
+        if (backupData.data.generalSettings) {
+          setGeneralSettings(backupData.data.generalSettings);
+          localStorage.setItem('app_general_settings', JSON.stringify(backupData.data.generalSettings));
+          if (onThemeChange && backupData.data.generalSettings.theme) {
+            onThemeChange(backupData.data.generalSettings.theme);
+          }
+        }
+      }
+
+      const backupInfo = backupData.metadata;
+      alert(`✅ تم استعادة النسخة الاحتياطية بنجاح!\n\n📊 تفاصيل النسخة المستعادة:\n- التاريخ: ${new Date(backupInfo.generatedAt).toLocaleString('ar-EG')}\n- النوع: ${backupInfo.backupType === 'manual' ? 'يدوي' : 'تلقائي'}\n- القضايا: ${backupInfo.recordCounts?.cases || 0}\n- العملاء: ${backupInfo.recordCounts?.clients || 0}\n- الجلسات: ${backupInfo.recordCounts?.hearings || 0}\n\n🔄 سيتم إعادة تحميل الصفحة لتطبيق التغييرات.`);
+      
+      // Reload page to apply changes
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+
+    } catch (error) {
+      console.error("Restore from Firebase Error:", error);
+      alert("❌ فشل استعادة النسخة الاحتياطية: " + error.message);
+    } finally {
+      setIsRestoring(false);
     }
   };
 
