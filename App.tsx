@@ -509,12 +509,17 @@ function App() {
     try {
       await updateAppUser(updatedUser.id, updatedUser);
       setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+      
+      // Log activity
+      await handleAddActivity({
+        action: 'تعديل بيانات المستخدم',
+        target: updatedUser.name,
+        user: currentUser?.name || 'مستخدم',
+        timestamp: new Date().toISOString()
+      });
     } catch (err) {
-      const activityId = await addActivity(activity);
-      setActivities(prev => [{ ...activity, id: activityId }, ...prev]);
-    } catch (err) {
-      console.error('Error adding activity:', err);
-      setError('فشل في تسجيل النشاط');
+      console.error('Error updating user:', err);
+      setError('فشل في تحديث المستخدم');
     }
   };
 
