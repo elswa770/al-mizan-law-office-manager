@@ -242,7 +242,17 @@ function App() {
   // --- Auth Handlers ---
   const handleLogin = async (email: string, password: string) => {
     try {
-      await loginUser(email, password);
+      const user = await loginUser(email, password);
+      
+      // Update user's last login in Firestore
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          lastLogin: new Date().toISOString()
+        }, { merge: true });
+      } catch (updateError) {
+        console.warn('Failed to update last login:', updateError);
+      }
+      
       return true;
     } catch (error: any) {
       console.error('Login error:', error);

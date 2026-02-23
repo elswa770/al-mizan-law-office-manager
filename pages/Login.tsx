@@ -61,7 +61,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, onShowRegister }) => {
     try {
       const success = await onLogin(email, password);
       if (!success) {
-        // Log failed login attempt
+        // Log failed login attempt only if login actually failed
         const ip = getClientIP();
         const userAgent = getUserAgent();
         const location = await getLocationFromIP(ip);
@@ -69,8 +69,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, onShowRegister }) => {
         await logFailedLogin(email, ip, userAgent, location);
         setError('فشل في تسجيل الدخول');
       }
+      // If success is true, don't log anything - login was successful
     } catch (err: any) {
-      // Log failed login attempt
+      // Log failed login attempt only if there was an actual error
       const ip = getClientIP();
       const userAgent = getUserAgent();
       const location = await getLocationFromIP(ip);
