@@ -505,6 +505,16 @@ function App() {
     }
   };
 
+  const handleAddActivity = async (activity: Omit<ActivityLog, 'id'>) => {
+    try {
+      const activityId = await addActivity(activity);
+      setActivities(prev => [{ ...activity, id: activityId }, ...prev]);
+    } catch (err) {
+      console.error('Error adding activity:', err);
+      setError('فشل في تسجيل النشاط');
+    }
+  };
+
   const handleUpdateUser = async (updatedUser: AppUser) => {
     try {
       await updateAppUser(updatedUser.id, updatedUser);
