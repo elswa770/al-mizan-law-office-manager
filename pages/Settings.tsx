@@ -92,12 +92,100 @@ const Settings: React.FC<SettingsProps> = ({
     uptime: '14d 2h 15m'
   });
 
-  const [errorLogs, setErrorLogs] = useState<SystemError[]>([
-    { id: '1', timestamp: '2024-02-20 10:15:00', level: 'error', message: 'Database connection timeout', source: 'PostgreSQL', resolved: false },
-    { id: '2', timestamp: '2024-02-19 14:30:00', level: 'warning', message: 'High memory usage detected', source: 'System Monitor', resolved: true }
-  ]);
+  const [errorLogs, setErrorLogs] = useState<SystemError[]>([]);
 
   const [isScanning, setIsScanning] = useState(false);
+
+  // Real Error Logging Functions
+  const logError = async (level: 'error' | 'warning', message: string, source: string) => {
+    const error: SystemError = {
+      id: Date.now().toString(),
+      timestamp: new Date().toLocaleString('ar-EG'),
+      level,
+      message,
+      source,
+      resolved: false
+    };
+
+    // Add to local state
+    setErrorLogs(prev => [error, ...prev].slice(0, 50)); // Keep only last 50 errors
+
+    // Save to Firebase
+    try {
+      await setDoc(doc(db, 'errorLogs', error.id), error);
+    } catch (firebaseError) {
+      console.error('Failed to save error to Firebase:', firebaseError);
+    }
+
+    // Also log to console
+    console.error(`[${level.toUpperCase()}] ${source}: ${message}`);
+  };
+
+  const clearErrorLogs = async () => {
+    if (confirm('هل أنت متأكد من حذف جميع سجلات الأخطاء؟')) {
+      try {
+        // Clear from Firebase
+        const errorLogsRef = collection(db, 'errorLogs');
+        const snapshot = await getDocs(errorLogsRef);
+        const batch = writeBatch(db);
+        
+        snapshot.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        
+        await batch.commit();
+        
+        // Clear local state
+        setErrorLogs([]);
+        
+        alert('✅ تم حذف سجلات الأخطاء بنجاح');
+      } catch (error) {
+        console.error('Failed to clear error logs:', error);
+        alert('❌ فشل حذف سجلات الأخطاء');
+      }
+    }
+  };
+
+  const markErrorAsResolved = async (errorId: string) => {
+    try {
+      await updateDoc(doc(db, 'errorLogs', errorId), { resolved: true });
+      
+      setErrorLogs(prev => 
+        prev.map(error => 
+          error.id === errorId ? { ...error, resolved: true } : error
+        )
+      );
+      
+      alert('✅ تم تحديث حالة الخطأ');
+    } catch (error) {
+      console.error('Failed to mark error as resolved:', error);
+      alert('❌ فشل تحديث حالة الخطأ');
+    }
+  };
+
+  // Load error logs from Firebase
+  useEffect(() => {
+    const loadErrorLogs = async () => {
+      try {
+        const errorLogsQuery = query(
+          collection(db, 'errorLogs'), 
+          orderBy('timestamp', 'desc'), 
+          limit(50)
+        );
+        const snapshot = await getDocs(errorLogsQuery);
+        const logs = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as SystemError[];
+        
+        setErrorLogs(logs);
+      } catch (error) {
+        console.error('Failed to load error logs:', error);
+      }
+    };
+
+    loadErrorLogs();
+  }, []);
 
   // Firebase Helper Functions
   const saveSettingsToFirebase = async (collectionName: string, data: any) => {
@@ -358,6 +446,7 @@ const Settings: React.FC<SettingsProps> = ({
       
     } catch (error) {
       console.error('System scan failed:', error);
+      await logError('error', `فشل فحص النظام: ${error.message}`, 'System Scanner');
       setSystemHealth(prev => ({
         ...prev,
         lastCheck: new Date().toISOString(),
@@ -519,6 +608,7 @@ const Settings: React.FC<SettingsProps> = ({
         
       } catch (error) {
         console.error('Database optimization failed:', error);
+        await logError('error', `فشل تحسين قاعدة البيانات: ${error.message}`, 'Database Optimizer');
         alert('❌ حدث خطأ أثناء تحسين قاعدة البيانات: ' + error.message);
       } finally {
         setIsScanning(false);
@@ -828,30 +918,63 @@ const Settings: React.FC<SettingsProps> = ({
 
         {/* Error Logs */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-          <h4 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
-             <AlertOctagon className="w-5 h-5 text-red-600" /> سجل الأخطاء الحديثة
-          </h4>
-          <div className="space-y-3 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-            {errorLogs.map(log => (
-              <div key={log.id} className="p-3 border border-slate-100 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                <div className="flex justify-between items-start mb-1">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${log.level === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {log.level}
-                  </span>
-                  <span className="text-[10px] text-slate-400">{log.timestamp}</span>
-                </div>
-                <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">{log.message}</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-500 font-mono">{log.source}</span>
-                  {log.resolved ? (
-                    <span className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> تم الحل</span>
-                  ) : (
-                    <button className="text-xs text-indigo-600 hover:underline">معالجة</button>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="flex justify-between items-center mb-6">
+            <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+               <AlertOctagon className="w-5 h-5 text-red-600" /> سجل الأخطاء الحديثة
+            </h4>
+            <div className="flex gap-2">
+              <span className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
+                {errorLogs.length} خطأ
+              </span>
+              {errorLogs.length > 0 && (
+                <button 
+                  onClick={clearErrorLogs}
+                  className="text-xs text-red-600 hover:text-red-700 font-medium"
+                >
+                  مسح الكل
+                </button>
+              )}
+            </div>
           </div>
+          
+          {errorLogs.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
+              <p className="text-sm">لا توجد أخطاء مسجلة حالياً</p>
+              <p className="text-xs mt-1">النظام يعمل بشكل طبيعي</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+              {errorLogs.map(log => (
+                <div key={log.id} className="p-3 border border-slate-100 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                      log.level === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {log.level}
+                    </span>
+                    <span className="text-[10px] text-slate-400">{log.timestamp}</span>
+                  </div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1">{log.message}</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-slate-500 font-mono">{log.source}</span>
+                    {log.resolved ? (
+                      <span className="text-xs text-green-600 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> تم الحل
+                      </span>
+                    ) : (
+                      <button 
+                        onClick={() => markErrorAsResolved(log.id)}
+                        className="text-xs text-indigo-600 hover:underline"
+                      >
+                        معالجة
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1586,7 +1709,7 @@ const Settings: React.FC<SettingsProps> = ({
     loadSecurityData();
   }, []);
 
-  // Add current session to active sessions
+  // Add current session to active sessions (only once)
   useEffect(() => {
     const addCurrentSession = async () => {
       try {
@@ -1594,8 +1717,42 @@ const Settings: React.FC<SettingsProps> = ({
         const currentUser = authInstance.currentUser;
         
         if (currentUser) {
+          // Check if user already has an active session
+          const existingSessionQuery = query(
+            collection(db, 'activeSessions'), 
+            where('userId', '==', currentUser.uid),
+            where('isCurrent', '==', true)
+          );
+          const existingSnapshot = await getDocs(existingSessionQuery);
+          
+          // If user already has a current session, don't create a new one
+          if (!existingSnapshot.empty) {
+            console.log('User already has an active session, skipping creation');
+            return;
+          }
+          
+          // Clean up old sessions for this user (keep only last 3)
+          const allSessionsQuery = query(
+            collection(db, 'activeSessions'), 
+            where('userId', '==', currentUser.uid),
+            orderBy('lastActive', 'desc')
+          );
+          const allSnapshot = await getDocs(allSessionsQuery);
+          const sessions = allSnapshot.docs;
+          
+          // Delete old sessions (keep only the newest 2)
+          if (sessions.length > 2) {
+            const batch = writeBatch(db);
+            for (let i = 2; i < sessions.length; i++) {
+              batch.delete(sessions[i].ref);
+            }
+            await batch.commit();
+            console.log(`Cleaned up ${sessions.length - 2} old sessions`);
+          }
+          
+          // Create new session only if no current session exists
           const sessionData: ActiveSession = {
-            id: currentUser.uid + '_' + Date.now(),
+            id: currentUser.uid + '_current_' + Date.now(),
             userId: currentUser.uid,
             ip: '192.168.1.1', // In real app, get from server
             device: navigator.platform,
@@ -1606,6 +1763,7 @@ const Settings: React.FC<SettingsProps> = ({
           };
 
           await setDoc(doc(db, 'activeSessions', sessionData.id), sessionData);
+          console.log('New session created:', sessionData.id);
         }
       } catch (error) {
         console.error('Error adding current session:', error);
@@ -1613,6 +1771,36 @@ const Settings: React.FC<SettingsProps> = ({
     };
 
     addCurrentSession();
+
+    // Cleanup function to update last active time periodically
+    const interval = setInterval(async () => {
+      try {
+        const authInstance = getAuth();
+        const currentUser = authInstance.currentUser;
+        
+        if (currentUser) {
+          const sessionsQuery = query(
+            collection(db, 'activeSessions'), 
+            where('userId', '==', currentUser.uid),
+            where('isCurrent', '==', true)
+          );
+          const snapshot = await getDocs(sessionsQuery);
+          
+          if (!snapshot.empty) {
+            const sessionDoc = snapshot.docs[0];
+            await updateDoc(sessionDoc.ref, {
+              lastActive: new Date().toISOString()
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error updating session activity:', error);
+      }
+    }, 60000); // Update every minute
+
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   // Helper function to get browser info
