@@ -335,6 +335,14 @@ function App() {
     try {
       await updateCase(updatedCase.id, updatedCase);
       setCases(prev => prev.map(c => c.id === updatedCase.id ? updatedCase : c));
+      
+      // Log activity
+      await handleAddActivity({
+        action: 'تعديل بيانات القضية',
+        target: updatedCase.title,
+        user: currentUser?.name || 'مستخدم',
+        timestamp: new Date().toISOString()
+      });
     } catch (err) {
       console.error('Error updating case:', err);
       setError('فشل في تحديث القضية');
@@ -413,6 +421,14 @@ function App() {
     try {
       await updateClient(updatedClient.id, updatedClient);
       setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
+      
+      // Log activity
+      await handleAddActivity({
+        action: 'تعديل بيانات الموكل',
+        target: updatedClient.name,
+        user: currentUser?.name || 'مستخدم',
+        timestamp: new Date().toISOString()
+      });
     } catch (err) {
       console.error('Error updating client:', err);
       setError('فشل في تحديث الموكل');
@@ -442,6 +458,15 @@ function App() {
     try {
       await updateTask(updatedTask.id, updatedTask);
       setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
+      
+      // Log activity
+      const caseTitle = updatedTask.relatedCaseId ? cases.find(c => c.id === updatedTask.relatedCaseId)?.title || 'قضية غير معروفة' : 'مهمة عامة';
+      await handleAddActivity({
+        action: 'تعديل المهمة',
+        target: `${updatedTask.title} - ${caseTitle}`,
+        user: currentUser?.name || 'مستخدم',
+        timestamp: new Date().toISOString()
+      });
     } catch (err) {
       console.error('Error updating task:', err);
       setError('فشل في تحديث المهمة');
@@ -450,8 +475,20 @@ function App() {
 
   const handleDeleteTask = async (taskId: string) => {
     try {
-      await deleteTask(taskId);
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+      const taskToDelete = tasks.find(t => t.id === taskId);
+      if (taskToDelete) {
+        await deleteTask(taskId);
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+        
+        // Log activity
+        const caseTitle = taskToDelete.relatedCaseId ? cases.find(c => c.id === taskToDelete.relatedCaseId)?.title || 'قضية غير معروفة' : 'مهمة عامة';
+        await handleAddActivity({
+          action: 'حذف المهمة',
+          target: `${taskToDelete.title} - ${caseTitle}`,
+          user: currentUser?.name || 'مستخدم',
+          timestamp: new Date().toISOString()
+        });
+      }
     } catch (err) {
       console.error('Error deleting task:', err);
       setError('فشل في حذف المهمة');
@@ -473,23 +510,6 @@ function App() {
       await updateAppUser(updatedUser.id, updatedUser);
       setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
     } catch (err) {
-      console.error('Error updating user:', err);
-      setError('فشل في تحديث المستخدم');
-    }
-  };
-
-  const handleDeleteUser = async (userId: string) => {
-    try {
-      await deleteAppUser(userId);
-      setUsers(prev => prev.filter(u => u.id !== userId));
-    } catch (err) {
-      console.error('Error deleting user:', err);
-      setError('فشل في حذف المستخدم');
-    }
-  };
-
-  const handleAddActivity = async (activity: Omit<ActivityLog, 'id'>) => {
-    try {
       const activityId = await addActivity(activity);
       setActivities(prev => [{ ...activity, id: activityId }, ...prev]);
     } catch (err) {
