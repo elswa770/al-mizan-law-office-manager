@@ -40,6 +40,12 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
     category: ''
   });
 
+  // --- Activity Logging ---
+  const logActivity = (action: string, target: string, user: string = 'مستخدم') => {
+    console.log('Activity logged:', { action, target, user, timestamp: new Date().toISOString() });
+    // In a real implementation, this would call the activity logging service
+  };
+
   // Handle Tab Logic based on Permissions
   useEffect(() => {
     if (!canViewIncome && canViewExpenses) {
@@ -189,6 +195,10 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
       ...targetCase,
       finance: newFinance
     });
+
+    // Log activity
+    const actionType = transactionData.type === 'payment' ? 'تسجيل معاملة دفع' : 'تسجيل مصروفات';
+    logActivity(actionType, `${transactionData.description} - ${targetCase.title}`);
 
     setIsTransactionModalOpen(false);
     setTransactionData({ caseId: '', amount: 0, type: 'payment', description: '', method: 'cash', category: '' });
