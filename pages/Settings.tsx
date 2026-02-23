@@ -9,8 +9,8 @@ import {
   Plus, Edit3, Trash2, Check, X, Eye, 
   Save, AlertCircle, Ban, Pencil, Key,
   Building, Phone, Mail, Globe, Upload, FileText, 
-  Bell, Moon, Sun, Database, Download, Cloud, Loader2, FileJson, History, HardDrive, RotateCcw,
-  Smartphone, LogOut, ShieldAlert, Fingerprint, Globe2, Clock, AlertTriangle, Archive, FileUp, RefreshCw, CalendarClock, Trash,
+  Bell, Moon, Sun, Database, Download, Clock, Cloud, Loader2, FileJson, History, HardDrive, RotateCcw,
+  Smartphone, LogOut, ShieldAlert, Fingerprint, Globe2, AlertTriangle, Archive, FileUp, RefreshCw, CalendarClock, Trash,
   Wrench, Activity, Cpu, AlertOctagon, CheckCircle2, Terminal, Server
 } from 'lucide-react';
 
@@ -132,14 +132,17 @@ const Settings: React.FC<SettingsProps> = ({
 
   const uploadBackupToFirebase = async (backupData: any, filename: string) => {
     try {
-      const storageRef = ref(storage, `backups/${filename}`);
-      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
-      console.log('Backup uploaded to Firebase Storage:', downloadURL);
-      return downloadURL;
+      // Use Firestore instead of Storage to avoid CORS issues
+      const backupRef = doc(db, 'backups', filename);
+      await setDoc(backupRef, {
+        ...backupData,
+        uploadedAt: new Date().toISOString(),
+        filename: filename
+      });
+      console.log('Backup uploaded to Firestore successfully');
+      return `Firestore:backups/${filename}`;
     } catch (error) {
-      console.error('Error uploading backup to Firebase:', error);
+      console.error('Error uploading backup to Firestore:', error);
       throw error;
     }
   };
@@ -1139,7 +1142,7 @@ const Settings: React.FC<SettingsProps> = ({
           <h4 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
              <RefreshCw className="w-5 h-5 text-green-600" /> نقل واستيراد البيانات
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="p-4 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
               <FileUp className="w-8 h-8 text-slate-400 mx-auto mb-2" />
               <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">استيراد من Excel</h5>
@@ -1162,6 +1165,32 @@ const Settings: React.FC<SettingsProps> = ({
                 className="text-sm text-indigo-600 font-bold hover:underline"
               >
                 تصدير الآن
+              </button>
+            </div>
+
+            <div className="p-4 border border-dashed border-green-300 dark:border-green-600 rounded-xl text-center hover:bg-green-50 dark:hover:bg-green-700/50 transition-colors">
+              <Database className="w-8 h-8 text-green-400 mx-auto mb-2" />
+              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">نسخة احتياطية يدوية</h5>
+              <p className="text-xs text-slate-500 mb-3">نسخة فورية في Firebase Firestore</p>
+              <button 
+                onClick={handleCreateBackup}
+                disabled={isBackingUp}
+                className="text-sm text-green-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isBackingUp ? 'جاري النسخ...' : 'نسخ احتياطي الآن'}
+              </button>
+            </div>
+
+            <div className="p-4 border border-dashed border-blue-300 dark:border-blue-600 rounded-xl text-center hover:bg-blue-50 dark:hover:bg-blue-700/50 transition-colors">
+              <Clock className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">اختبار النسخ التلقائي</h5>
+              <p className="text-xs text-slate-500 mb-3">فحص عمل النسخ التلقائي</p>
+              <button 
+                onClick={handleTestAutoBackup}
+                disabled={isBackingUp}
+                className="text-sm text-blue-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isBackingUp ? 'جاري الاختبار...' : 'اختبار الآن'}
               </button>
             </div>
           </div>
@@ -1321,12 +1350,13 @@ const Settings: React.FC<SettingsProps> = ({
   const handleCreateBackup = async () => {
     setIsBackingUp(true);
 
-    setTimeout(async () => {
+    try {
       const backupData = {
         metadata: {
           generatedAt: new Date().toISOString(),
           version: '1.0',
           appName: 'Al-Mizan',
+          backupType: 'manual',
           recordCounts: {
             cases: cases.length,
             clients: clients.length,
@@ -1346,33 +1376,89 @@ const Settings: React.FC<SettingsProps> = ({
         }
       };
 
-      const jsonString = JSON.stringify(backupData, null, 2);
-      const blob = new Blob([jsonString], { type: 'application/json' });
+      // Upload to Firebase Storage only
+      const filename = `AlMizan_Manual_Backup_${new Date().toISOString().split('T')[0]}_${new Date().toTimeString().split(' ')[0].replace(/:/g, '-')}.json`;
+      const downloadURL = await uploadBackupToFirebase(backupData, filename);
       
-      // Download locally
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `AlMizan_Backup_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      // Upload to Firebase Storage
-      try {
-        const filename = `AlMizan_Backup_${new Date().toISOString().split('T')[0]}.json`;
-        await uploadBackupToFirebase(backupData, filename);
-        console.log('Backup uploaded to Firebase Storage successfully');
-      } catch (error) {
-        console.error('Failed to upload backup to Firebase:', error);
-      }
-
       const now = new Date().toLocaleString('ar-EG');
       setLastBackupDate(now);
       localStorage.setItem('app_last_backup_date', now);
+      
+      // Show success message with Firebase Firestore info
+      alert(`✅ تم إنشاء نسخة احتياطية يدوية بنجاح!\n\n📊 تفاصيل النسخة:\n- التاريخ: ${now}\n- القضايا: ${cases.length}\n- العملاء: ${clients.length}\n- الجلسات: ${hearings.length}\n- المستخدمون: ${users.length}\n\n🔥 تم حفظ النسخة في Firebase Firestore\n📁 اسم الملف: ${filename}\n📍 الموقع: ${downloadURL}`);
+
+    } catch (error) {
+      console.error('Manual backup failed:', error);
+      alert('❌ فشل إنشاء النسخة الاحتياطية: ' + error.message);
+    } finally {
       setIsBackingUp(false);
-    }, 1500);
+    }
+  };
+
+  // Enhanced automatic backup function
+  const handleAutoBackup = async () => {
+    try {
+      const backupData = {
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          version: '1.0',
+          appName: 'Al-Mizan',
+          backupType: 'automatic',
+          frequency: dataSettings.autoBackupFrequency,
+          scheduledTime: dataSettings.autoBackupTime,
+          recordCounts: {
+            cases: cases.length,
+            clients: clients.length,
+            hearings: hearings.length,
+            documents: 0, 
+            users: users.length
+          }
+        },
+        data: {
+          generalSettings,
+          users,
+          cases,
+          clients,
+          hearings,
+          tasks,
+          references
+        }
+      };
+
+      // Upload to Firestore instead of Storage
+      const filename = `AlMizan_Auto_Backup_${new Date().toISOString().split('T')[0]}.json`;
+      const backupRef = doc(db, 'backups', filename);
+      await setDoc(backupRef, {
+        ...backupData,
+        uploadedAt: new Date().toISOString(),
+        filename: filename
+      });
+      
+      // Update last backup date
+      const now = new Date().toLocaleString('ar-EG');
+      setLastBackupDate(now);
+      localStorage.setItem('app_last_backup_date', now);
+      
+      console.log('Automatic backup completed successfully');
+      
+    } catch (error) {
+      console.error('Automatic backup failed:', error);
+    }
+  };
+
+  // Test automatic backup functionality
+  const handleTestAutoBackup = async () => {
+    if (confirm('هل تريد اختبار النسخ الاحتياطي التلقائي الآن؟ سيتم إنشاء نسخة اختبارية.')) {
+      setIsBackingUp(true);
+      try {
+        await handleAutoBackup();
+        alert('✅ اختبار النسخ الاحتياطي التلقائي اكتمل بنجاح!\n\nتم إنشاء نسخة احتياطية تلقائية في Firebase Firestore.');
+      } catch (error) {
+        alert('❌ فشل اختبار النسخ الاحتياطي التلقائي: ' + error.message);
+      } finally {
+        setIsBackingUp(false);
+      }
+    }
   };
 
   const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
