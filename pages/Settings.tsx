@@ -1709,7 +1709,7 @@ const Settings: React.FC<SettingsProps> = ({
     loadSecurityData();
   }, []);
 
-  // Add current session to active sessions (only once)
+  // Add current session to active sessions (support multiple devices)
   useEffect(() => {
     const addCurrentSession = async () => {
       try {
@@ -1717,21 +1717,27 @@ const Settings: React.FC<SettingsProps> = ({
         const currentUser = authInstance.currentUser;
         
         if (currentUser) {
-          // Check if user already has an active session
-          const existingSessionQuery = query(
+          // Check if this specific device/browser already has a session
+          const deviceFingerprint = currentUser.uid + '_' + navigator.userAgent + '_' + navigator.platform;
+          const existingDeviceSessionQuery = query(
             collection(db, 'activeSessions'), 
             where('userId', '==', currentUser.uid),
-            where('isCurrent', '==', true)
+            where('deviceFingerprint', '==', deviceFingerprint)
           );
-          const existingSnapshot = await getDocs(existingSessionQuery);
+          const existingDeviceSnapshot = await getDocs(existingDeviceSessionQuery);
           
-          // If user already has a current session, don't create a new one
-          if (!existingSnapshot.empty) {
-            console.log('User already has an active session, skipping creation');
+          // If this device already has a session, update it instead of creating new one
+          if (!existingDeviceSnapshot.empty) {
+            const existingDoc = existingDeviceSnapshot.docs[0];
+            await updateDoc(existingDoc.ref, {
+              lastActive: new Date().toISOString(),
+              isCurrent: true
+            });
+            console.log('Updated existing device session:', existingDoc.id);
             return;
           }
           
-          // Clean up old sessions for this user (keep only last 3)
+          // Clean up old sessions for this user (keep only last 5)
           const allSessionsQuery = query(
             collection(db, 'activeSessions'), 
             where('userId', '==', currentUser.uid),
@@ -1740,30 +1746,31 @@ const Settings: React.FC<SettingsProps> = ({
           const allSnapshot = await getDocs(allSessionsQuery);
           const sessions = allSnapshot.docs;
           
-          // Delete old sessions (keep only the newest 2)
-          if (sessions.length > 2) {
-            const batch = writeBatch(db);
-            for (let i = 2; i < sessions.length; i++) {
+          // Delete old sessions (keep only the newest 5) - DON'T mark as not current
+          const batch = writeBatch(db);
+          if (sessions.length > 5) {
+            for (let i = 5; i < sessions.length; i++) {
               batch.delete(sessions[i].ref);
             }
             await batch.commit();
-            console.log(`Cleaned up ${sessions.length - 2} old sessions`);
+            console.log(`Cleaned up ${sessions.length - 5} old sessions`);
           }
           
-          // Create new session only if no current session exists
+          // Create new session for this device (keep other sessions active)
           const sessionData: ActiveSession = {
-            id: currentUser.uid + '_current_' + Date.now(),
+            id: currentUser.uid + '_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
             userId: currentUser.uid,
             ip: '192.168.1.1', // In real app, get from server
             device: navigator.platform,
             browser: getBrowserInfo(),
             location: 'Unknown', // In real app, get from geolocation API
             lastActive: new Date().toISOString(),
-            isCurrent: true
+            isCurrent: true, // This device is current for this session
+            deviceFingerprint: deviceFingerprint
           };
 
           await setDoc(doc(db, 'activeSessions', sessionData.id), sessionData);
-          console.log('New session created:', sessionData.id);
+          console.log('New session created for device:', sessionData.id);
         }
       } catch (error) {
         console.error('Error adding current session:', error);
@@ -1779,17 +1786,19 @@ const Settings: React.FC<SettingsProps> = ({
         const currentUser = authInstance.currentUser;
         
         if (currentUser) {
+          const deviceFingerprint = currentUser.uid + '_' + navigator.userAgent + '_' + navigator.platform;
           const sessionsQuery = query(
             collection(db, 'activeSessions'), 
             where('userId', '==', currentUser.uid),
-            where('isCurrent', '==', true)
+            where('deviceFingerprint', '==', deviceFingerprint)
           );
           const snapshot = await getDocs(sessionsQuery);
           
           if (!snapshot.empty) {
             const sessionDoc = snapshot.docs[0];
             await updateDoc(sessionDoc.ref, {
-              lastActive: new Date().toISOString()
+              lastActive: new Date().toISOString(),
+              isCurrent: true // Keep this device current
             });
           }
         }
