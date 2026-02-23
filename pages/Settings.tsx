@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { AppUser, PermissionLevel, Case, Client, Hearing, Task, LegalReference, NotificationSettings, SMTPSettings, WhatsAppSettings, AlertPreferences, SecuritySettings, LoginAttempt, ActiveSession, DataManagementSettings, SystemHealth, SystemError, ResourceUsage, MaintenanceSettings } from '../types';
-import { doc, setDoc, getDoc, collection, addDoc, updateDoc, deleteDoc, query, where, getDocs, onSnapshot, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, addDoc, updateDoc, deleteDoc, query, where, getDocs, onSnapshot, writeBatch, orderBy, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getAuth, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { db, storage } from '../services/firebaseConfig';
@@ -1143,82 +1143,139 @@ const Settings: React.FC<SettingsProps> = ({
           <h4 className="font-bold text-slate-800 dark:text-white mb-6 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
              <RefreshCw className="w-5 h-5 text-green-600" /> نقل واستيراد البيانات
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            <div className="p-4 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-              <FileUp className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">استيراد من Excel</h5>
-              <p className="text-xs text-slate-500 mb-3">CSV, XLSX</p>
-              <button 
-                onClick={() => importFileRef.current?.click()}
-                className="text-sm text-indigo-600 font-bold hover:underline"
-              >
-                اختيار ملف
-              </button>
-              <input type="file" ref={importFileRef} className="hidden" accept=".csv, .xlsx" onChange={handleImportData} />
+          
+          {/* Description */}
+          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+            <p className="text-sm text-blue-800 dark:text-blue-200">
+              <strong>📊 إدارة البيانات:</strong> يمكنك استيراد البيانات من ملفات Excel، إنشاء نسخ احتياطية، واستعادة البيانات من Firebase Storage.
+            </p>
+          </div>
+
+          {/* Main Actions Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {/* Import Section */}
+            <div className="space-y-4">
+              <h5 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <FileUp className="w-5 h-5 text-indigo-600" />
+                استيراد البيانات
+              </h5>
+              
+              <div className="p-4 border border-dashed border-indigo-300 dark:border-indigo-600 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-700/50 transition-colors">
+                <FileUp className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
+                <h6 className="font-bold text-slate-700 dark:text-slate-300 mb-1">استيراد من Excel</h6>
+                <p className="text-xs text-slate-500 mb-3">CSV, XLSX</p>
+                <button 
+                  onClick={() => importFileRef.current?.click()}
+                  className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors"
+                >
+                  اختيار ملف
+                </button>
+                <input type="file" ref={importFileRef} className="hidden" accept=".csv, .xlsx" onChange={handleImportData} />
+              </div>
             </div>
+
+            {/* Export Section */}
+            <div className="space-y-4">
+              <h5 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <Download className="w-5 h-5 text-green-600" />
+                تصدير البيانات
+              </h5>
+              
+              <div className="p-4 border border-dashed border-green-300 dark:border-green-600 rounded-xl hover:bg-green-50 dark:hover:bg-green-700/50 transition-colors">
+                <Database className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                <h6 className="font-bold text-slate-700 dark:text-slate-300 mb-1">تصدير كامل</h6>
+                <p className="text-xs text-slate-500 mb-3">JSON, SQL</p>
+                <button 
+                  onClick={handleCreateBackup}
+                  className="w-full bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 transition-colors"
+                >
+                  تصدير الآن
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Backup Management Section */}
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+            <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+              <Database className="w-5 h-5 text-blue-600" />
+              إدارة النسخ الاحتياطية
+            </h5>
             
-            <div className="p-4 border border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-center hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-              <Database className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">تصدير كامل</h5>
-              <p className="text-xs text-slate-500 mb-3">JSON, SQL</p>
-              <button 
-                onClick={handleCreateBackup}
-                className="text-sm text-indigo-600 font-bold hover:underline"
-              >
-                تصدير الآن
-              </button>
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Manual Backup */}
+              <div className="p-4 border border-dashed border-green-300 dark:border-green-600 rounded-xl text-center hover:bg-green-50 dark:hover:bg-green-700/50 transition-colors">
+                <Database className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                <h6 className="font-bold text-slate-700 dark:text-slate-300 mb-1">نسخة احتياطية يدوية</h6>
+                <p className="text-xs text-slate-500 mb-3">نسخة فورية في Firebase</p>
+                <button 
+                  onClick={handleCreateBackup}
+                  disabled={isBackingUp}
+                  className="w-full bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBackingUp ? 'جاري النسخ...' : 'نسخ الآن'}
+                </button>
+              </div>
 
-            <div className="p-4 border border-dashed border-green-300 dark:border-green-600 rounded-xl text-center hover:bg-green-50 dark:hover:bg-green-700/50 transition-colors">
-              <Database className="w-8 h-8 text-green-400 mx-auto mb-2" />
-              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">نسخة احتياطية يدوية</h5>
-              <p className="text-xs text-slate-500 mb-3">نسخة فورية في Firebase Firestore</p>
-              <button 
-                onClick={handleCreateBackup}
-                disabled={isBackingUp}
-                className="text-sm text-green-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isBackingUp ? 'جاري النسخ...' : 'نسخ احتياطي الآن'}
-              </button>
-            </div>
+              {/* Test Auto Backup */}
+              <div className="p-4 border border-dashed border-blue-300 dark:border-blue-600 rounded-xl text-center hover:bg-blue-50 dark:hover:bg-blue-700/50 transition-colors">
+                <Clock className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+                <h6 className="font-bold text-slate-700 dark:text-slate-300 mb-1">اختبار النسخ التلقائي</h6>
+                <p className="text-xs text-slate-500 mb-3">فحص عمل النسخ التلقائي</p>
+                <button 
+                  onClick={handleTestAutoBackup}
+                  disabled={isBackingUp}
+                  className="w-full bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBackingUp ? 'جاري الاختبار...' : 'اختبار الآن'}
+                </button>
+              </div>
 
-            <div className="p-4 border border-dashed border-blue-300 dark:border-blue-600 rounded-xl text-center hover:bg-blue-50 dark:hover:bg-blue-700/50 transition-colors">
-              <Clock className="w-8 h-8 text-blue-400 mx-auto mb-2" />
-              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">اختبار النسخ التلقائي</h5>
-              <p className="text-xs text-slate-500 mb-3">فحص عمل النسخ التلقائي</p>
-              <button 
-                onClick={handleTestAutoBackup}
-                disabled={isBackingUp}
-                className="text-sm text-blue-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isBackingUp ? 'جاري الاختبار...' : 'اختبار الآن'}
-              </button>
-            </div>
+              {/* List Backups */}
+              <div className="p-4 border border-dashed border-purple-300 dark:border-purple-600 rounded-xl text-center hover:bg-purple-50 dark:hover:bg-purple-700/50 transition-colors">
+                <List className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+                <h6 className="font-bold text-slate-700 dark:text-slate-300 mb-1">عرض النسخ الاحتياطية</h6>
+                <p className="text-xs text-slate-500 mb-3">قائمة النسخ من Firebase</p>
+                <button 
+                  onClick={handleListFirebaseBackups}
+                  disabled={isBackingUp}
+                  className="w-full bg-purple-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBackingUp ? 'جاري العرض...' : 'عرض الآن'}
+                </button>
+              </div>
 
-            <div className="p-4 border border-dashed border-purple-300 dark:border-purple-600 rounded-xl text-center hover:bg-purple-50 dark:hover:bg-purple-700/50 transition-colors">
-              <List className="w-8 h-8 text-purple-400 mx-auto mb-2" />
-              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">عرض النسخ الاحتياطية</h5>
-              <p className="text-xs text-slate-500 mb-3">قائمة النسخ من Firebase</p>
-              <button 
-                onClick={handleListFirebaseBackups}
-                disabled={isBackingUp}
-                className="text-sm text-purple-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isBackingUp ? 'جاري العرض...' : 'عرض الآن'}
-              </button>
+              {/* Restore Backup */}
+              <div className="p-4 border border-dashed border-orange-300 dark:border-orange-600 rounded-xl text-center hover:bg-orange-50 dark:hover:bg-orange-700/50 transition-colors">
+                <RotateCcw className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+                <h6 className="font-bold text-slate-700 dark:text-slate-300 mb-1">استعادة نسخة</h6>
+                <p className="text-xs text-slate-500 mb-3">استعادة من السحابة</p>
+                <button 
+                  onClick={handleRestoreFromFirebase}
+                  disabled={isRestoring}
+                  className="w-full bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isRestoring ? 'جاري الاستعادة...' : 'استعادة الآن'}
+                </button>
+              </div>
             </div>
+          </div>
 
-            <div className="p-4 border border-dashed border-orange-300 dark:border-orange-600 rounded-xl text-center hover:bg-orange-50 dark:hover:bg-orange-700/50 transition-colors">
-              <RotateCcw className="w-8 h-8 text-orange-400 mx-auto mb-2" />
-              <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-1">استعادة من Firebase</h5>
-              <p className="text-xs text-slate-500 mb-3">استعادة نسخة من السحابة</p>
-              <button 
-                onClick={handleRestoreFromFirebase}
-                disabled={isRestoring}
-                className="text-sm text-orange-600 font-bold hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isRestoring ? 'جاري الاستعادة...' : 'استعادة الآن'}
-              </button>
+          {/* Status Information */}
+          <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                <span className="text-sm text-slate-700 dark:text-slate-300">
+                  آخر نسخة احتياطية: {lastBackupDate || 'لم يتم إنشاء نسخة احتياطية بعد'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${isBackingUp || isRestoring ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}></div>
+                <span className="text-xs text-slate-500">
+                  {isBackingUp || isRestoring ? 'جاري التنفيذ...' : 'جاهز'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -1277,17 +1334,99 @@ const Settings: React.FC<SettingsProps> = ({
     };
   });
 
-  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([
-    { id: '1', userId: '1', ip: '192.168.1.1', device: 'Windows PC', browser: 'Chrome 120.0', location: 'Cairo, Egypt', lastActive: 'Now', isCurrent: true },
-    { id: '2', userId: '1', ip: '192.168.1.5', device: 'iPhone 13', browser: 'Safari Mobile', location: 'Giza, Egypt', lastActive: '2 hours ago', isCurrent: false }
-  ]);
-
-  const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([
-    { id: '1', ip: '41.234.12.1', timestamp: '2024-02-20 14:30:00', success: false, username: 'admin', userAgent: 'Mozilla/5.0...' },
-    { id: '2', ip: '192.168.1.1', timestamp: '2024-02-21 09:00:00', success: true, username: 'admin', userAgent: 'Mozilla/5.0...' }
-  ]);
-
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [loginAttempts, setLoginAttempts] = useState<LoginAttempt[]>([]);
   const [newIp, setNewIp] = useState('');
+
+  // Load active sessions and login attempts from Firebase
+  useEffect(() => {
+    const loadSecurityData = async () => {
+      try {
+        // Load active sessions
+        const sessionsQuery = query(collection(db, 'activeSessions'));
+        const sessionsSnapshot = await getDocs(sessionsQuery);
+        const sessions = sessionsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as ActiveSession[];
+        setActiveSessions(sessions);
+
+        // Load login attempts
+        const attemptsQuery = query(collection(db, 'loginAttempts'), orderBy('timestamp', 'desc'), limit(50));
+        const attemptsSnapshot = await getDocs(attemptsQuery);
+        const attempts = attemptsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as LoginAttempt[];
+        setLoginAttempts(attempts);
+
+      } catch (error) {
+        console.error('Error loading security data:', error);
+      }
+    };
+
+    loadSecurityData();
+  }, []);
+
+  // Add current session to active sessions
+  useEffect(() => {
+    const addCurrentSession = async () => {
+      try {
+        const authInstance = getAuth();
+        const currentUser = authInstance.currentUser;
+        
+        if (currentUser) {
+          const sessionData: ActiveSession = {
+            id: currentUser.uid + '_' + Date.now(),
+            userId: currentUser.uid,
+            ip: '192.168.1.1', // In real app, get from server
+            device: navigator.platform,
+            browser: getBrowserInfo(),
+            location: 'Unknown', // In real app, get from geolocation API
+            lastActive: new Date().toISOString(),
+            isCurrent: true
+          };
+
+          await setDoc(doc(db, 'activeSessions', sessionData.id), sessionData);
+        }
+      } catch (error) {
+        console.error('Error adding current session:', error);
+      }
+    };
+
+    addCurrentSession();
+  }, []);
+
+  // Helper function to get browser info
+  const getBrowserInfo = () => {
+    const ua = navigator.userAgent;
+    if (ua.includes('Chrome')) return 'Chrome';
+    if (ua.includes('Firefox')) return 'Firefox';
+    if (ua.includes('Safari')) return 'Safari';
+    if (ua.includes('Edge')) return 'Edge';
+    return 'Unknown';
+  };
+
+  // Function to log login attempts
+  const logLoginAttempt = async (username: string, success: boolean, ip: string = 'Unknown') => {
+    try {
+      const attemptData: LoginAttempt = {
+        id: Date.now().toString(),
+        ip: ip,
+        timestamp: new Date().toISOString(),
+        success: success,
+        username: username,
+        userAgent: navigator.userAgent
+      };
+
+      await setDoc(doc(db, 'loginAttempts', attemptData.id), attemptData);
+      
+      // Update local state
+      setLoginAttempts(prev => [attemptData, ...prev].slice(0, 50));
+    } catch (error) {
+      console.error('Error logging login attempt:', error);
+    }
+  };
 
 
   // Notification State
@@ -1726,9 +1865,16 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  const handleTerminateSession = (sessionId: string) => {
+  const handleTerminateSession = async (sessionId: string) => {
     if (confirm('هل أنت متأكد من إنهاء هذه الجلسة؟')) {
-      setActiveSessions(prev => prev.filter(s => s.id !== sessionId));
+      try {
+        await deleteDoc(doc(db, 'activeSessions', sessionId));
+        setActiveSessions(prev => prev.filter(s => s.id !== sessionId));
+        alert('✅ تم إنهاء الجلسة بنجاح');
+      } catch (error) {
+        console.error('Error terminating session:', error);
+        alert('❌ فشل إنهاء الجلسة');
+      }
     }
   };
 
