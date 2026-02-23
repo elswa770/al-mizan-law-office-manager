@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AppUser, PermissionLevel, Case, Client, Hearing, Task, LegalReference, NotificationSettings, SMTPSettings, WhatsAppSettings, AlertPreferences, SecuritySettings, LoginAttempt, ActiveSession, DataManagementSettings, SystemHealth, SystemError, ResourceUsage, MaintenanceSettings } from '../types';
 import { doc, setDoc, getDoc, collection, addDoc, updateDoc, deleteDoc, query, where, getDocs, onSnapshot, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { getAuth, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { db, storage } from '../services/firebaseConfig';
 import { 
   Settings as SettingsIcon, Users, Lock, Shield, 
@@ -1637,18 +1638,70 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   // --- Handlers: Security ---
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation
     if (securityData.newPassword !== securityData.confirmPassword) {
       alert('كلمة المرور الجديدة غير متطابقة');
       return;
     }
+    
+    if (securityData.newPassword.length < 8) {
+      alert('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+      return;
+    }
+    
     setIsSaving(true);
-    setTimeout(() => {
+    
+    try {
+      // Get current user
+      const authInstance = getAuth();
+      const currentUser = authInstance.currentUser;
+      if (!currentUser) {
+        throw new Error('لا يوجد مستخدم مسجل حالياً');
+      }
+      
+      // Re-authenticate user first
+      const credential = EmailAuthProvider.credential(
+        currentUser.email || '',
+        securityData.currentPassword
+      );
+      
+      await reauthenticateWithCredential(currentUser, credential);
+      
+      // Update password
+      await updatePassword(currentUser, securityData.newPassword);
+      
+      // Clear form
+      setSecurityData(prev => ({ 
+        ...prev, 
+        currentPassword: '', 
+        newPassword: '', 
+        confirmPassword: '' 
+      }));
+      
+      alert('✅ تم تحديث كلمة المرور بنجاح');
+      
+    } catch (error: any) {
+      console.error('Password change error:', error);
+      
+      let errorMessage = 'فشل تحديث كلمة المرور';
+      
+      if (error.code === 'auth/wrong-password') {
+        errorMessage = 'كلمة المرور الحالية غير صحيحة';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'كلمة المرور الجديدة ضعيفة جداً';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'محاولات كثيرة جداً، يرجى المحاولة لاحقاً';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      alert('❌ ' + errorMessage);
+    } finally {
       setIsSaving(false);
-      setSecurityData(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
-      alert('تم تحديث كلمة المرور بنجاح');
-    }, 1000);
+    }
   };
 
   const handleSaveSecuritySettings = async () => {
