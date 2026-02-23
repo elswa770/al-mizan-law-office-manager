@@ -1,7 +1,7 @@
-
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Case, Client, CaseDocument, ClientDocument, CaseRuling } from '../types';
-import { FileText, Search, Filter, FolderOpen, User, Briefcase, File, Gavel, FileCheck, Shield, Download, Eye, ExternalLink, Calendar, Grid, List, Building2, Upload, X, Check } from 'lucide-react';
+import { FileText, Search, Filter, FolderOpen, User, Briefcase, File, Gavel, FileCheck, Shield, Download, Eye, ExternalLink, Calendar, Grid, List, Building2, Upload, X, Check, Cloud, Plus, Trash2 } from 'lucide-react';
+import CloudDocumentUpload from '../components/CloudDocumentUpload';
 
 interface DocumentsProps {
   cases: Case[];
@@ -37,6 +37,7 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
 
   // --- Upload Modal State ---
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'local' | 'cloud'>('local');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadData, setUploadData] = useState({
     targetType: 'case' as 'case' | 'client',
@@ -366,6 +367,40 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
 
          {/* Content Area */}
          <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/50">
+            {/* Tab Navigation */}
+            <div className="flex gap-4 mb-6 border-b border-slate-200 dark:border-slate-700">
+               <button
+                  onClick={() => setActiveTab('local')}
+                  className={`pb-3 px-1 font-medium text-sm transition-colors border-b-2 ${
+                     activeTab === 'local' 
+                       ? 'text-primary-600 dark:text-primary-400 border-primary-600 dark:border-primary-400' 
+                       : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+               >
+                  <FolderOpen className="w-4 h-4 inline ml-2" />
+                  المستندات المحلية
+               </button>
+               <button
+                  onClick={() => setActiveTab('cloud')}
+                  className={`pb-3 px-1 font-medium text-sm transition-colors border-b-2 ${
+                     activeTab === 'cloud' 
+                       ? 'text-primary-600 dark:text-primary-400 border-primary-600 dark:border-primary-400' 
+                       : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-300'
+                  }`}
+               >
+                  <Cloud className="w-4 h-4 inline ml-2" />
+                  المستندات السحابية
+               </button>
+            </div>
+
+            {/* Tab Content */}
+            {activeTab === 'cloud' ? (
+               <CloudDocumentUpload 
+                  caseId={uploadData.targetType === 'case' ? uploadData.targetId : undefined}
+                  clientId={uploadData.targetType === 'client' ? uploadData.targetId : undefined}
+               />
+            ) : (
+               <>
             {filteredDocs.length > 0 ? (
                viewMode === 'grid' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -481,6 +516,8 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
                   <p className="text-lg font-medium">لا توجد مستندات تطابق البحث</p>
                   <p className="text-sm">جرب تغيير الفلاتر أو البحث بكلمات أخرى</p>
                </div>
+            )}
+               </>
             )}
          </div>
       </div>

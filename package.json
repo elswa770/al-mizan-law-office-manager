@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^1.39.0",
     "firebase": "^12.9.0",
     "html2canvas": "1.4.1",
