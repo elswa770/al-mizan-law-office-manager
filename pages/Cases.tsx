@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Case, Client, CaseStatus, CourtType } from '../types';
+import { Case, Client, CaseStatus, CourtType, CaseType } from '../types';
 import { Briefcase, Search, Plus, Filter, User, Calendar, MapPin, ArrowUpRight, X, Save, Gavel, LayoutGrid, List, Users } from 'lucide-react';
 
 interface CasesProps {
@@ -14,6 +14,9 @@ interface CasesProps {
 const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, readOnly = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [caseTypeFilter, setCaseTypeFilter] = useState<string>('all');
+  const [courtFilter, setCourtFilter] = useState<string>('all');
+  const [lawyerFilter, setLawyerFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   
@@ -29,18 +32,26 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
     courtBranch: '',
     circle: '',
     judgeName: '',
-    description: ''
+    description: '',
+    caseType: CaseType.CIVIL_CASE,
+    assignedLawyer: '',
+    filingDate: new Date().toISOString().split('T')[0]
   });
 
   const filteredCases = cases.filter(c => {
     const matchesSearch = 
       c.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
       c.caseNumber.includes(searchTerm) || 
-      c.clientName.toLowerCase().includes(searchTerm.toLowerCase());
+      c.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.assignedLawyer && c.assignedLawyer.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (c.caseType && c.caseType.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
+    const matchesCaseType = caseTypeFilter === 'all' || c.caseType === caseTypeFilter;
+    const matchesCourt = courtFilter === 'all' || c.court === courtFilter;
+    const matchesLawyer = lawyerFilter === 'all' || c.assignedLawyer === lawyerFilter;
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesCaseType && matchesCourt && matchesLawyer;
   });
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -62,14 +73,21 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
       clientName: client?.name || '',
       clientRole: formData.clientRole,
       description: formData.description,
-      finance: { agreedFees: 0, paidAmount: 0, expenses: 0, history: [] }
+      finance: { agreedFees: 0, paidAmount: 0, expenses: 0, history: [] },
+      // New fields
+      caseType: formData.caseType as CaseType,
+      assignedLawyer: formData.assignedLawyer,
+      filingDate: formData.filingDate
     };
 
     onAddCase(newCase);
     setIsAddModalOpen(false);
     setFormData({
       title: '', caseNumber: '', year: new Date().getFullYear(), court: '', 
-      status: CaseStatus.OPEN, clientId: '', clientRole: 'مدعي'
+      status: CaseStatus.OPEN, clientId: '', clientRole: 'مدعي',
+      caseType: CaseType.CIVIL_CASE,
+      assignedLawyer: '',
+      filingDate: new Date().toISOString().split('T')[0]
     });
   };
 
@@ -117,6 +135,24 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
                   <User className="w-3 h-3" />
                   <span className="truncate">{c.clientName} ({c.clientRole})</span>
                 </div>
+                {c.assignedLawyer && (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <Briefcase className="w-3 h-3" />
+                    <span className="truncate">المحامي: {c.assignedLawyer}</span>
+                  </div>
+                )}
+                {c.caseType && (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <Gavel className="w-3 h-3" />
+                    <span className="truncate">النوع: {c.caseType}</span>
+                  </div>
+                )}
+                {c.filingDate && (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <Calendar className="w-3 h-3" />
+                    <span className="truncate">تاريخ القيد: {c.filingDate}</span>
+                  </div>
+                )}
                 {opponent && (
                   <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                     <Users className="w-3 h-3 text-red-500" />
@@ -212,6 +248,9 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
                       <span className="text-sm font-medium">{c.court}</span>
                       {c.courtBranch && <span className="text-xs text-slate-500 dark:text-slate-400">{c.courtBranch}</span>}
                       {c.circle && <span className="text-[10px] text-slate-400">دائرة: {c.circle}</span>}
+                      {c.caseType && <span className="text-[10px] text-slate-400">النوع: {c.caseType}</span>}
+                      {c.assignedLawyer && <span className="text-[10px] text-slate-400">المحامي: {c.assignedLawyer}</span>}
+                      {c.filingDate && <span className="text-[10px] text-slate-400">تاريخ القيد: {c.filingDate}</span>}
                    </div>
                 </td>
                 <td className="p-4">
@@ -266,14 +305,14 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
           <input
             type="text"
-            placeholder="بحث برقم القضية، اسم الموكل، أو العنوان..."
+            placeholder="بحث بالعنوان، رقم القضية، اسم الموكل، المحامي، أو النوع..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pr-10 pl-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:border-primary-500 text-slate-900 dark:text-white transition-colors"
           />
         </div>
         
-        <div className="flex items-center gap-4 w-full md:w-auto">
+        <div className="flex items-center gap-2 w-full md:w-auto">
           {/* Status Filter */}
           <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 flex-1 md:flex-none">
             <Filter className="w-4 h-4 text-slate-400 shrink-0" />
@@ -286,6 +325,51 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
               {Object.values(CaseStatus).map(status => (
                 <option key={status} value={status}>{status}</option>
               ))}
+            </select>
+          </div>
+
+          {/* Case Type Filter */}
+          <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 flex-1 md:flex-none">
+            <Gavel className="w-4 h-4 text-slate-400 shrink-0" />
+            <select 
+              value={caseTypeFilter}
+              onChange={(e) => setCaseTypeFilter(e.target.value)}
+              className="bg-transparent border-none text-sm text-slate-700 dark:text-slate-300 focus:outline-none w-full cursor-pointer"
+            >
+              <option value="all">جميع الأنواع</option>
+              {Object.values(CaseType).map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Court Filter */}
+          <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 flex-1 md:flex-none">
+            <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+            <select 
+              value={courtFilter}
+              onChange={(e) => setCourtFilter(e.target.value)}
+              className="bg-transparent border-none text-sm text-slate-700 dark:text-slate-300 focus:outline-none w-full cursor-pointer"
+            >
+              <option value="all">جميع المحاكم</option>
+              {Object.values(CourtType).map(court => (
+                <option key={court} value={court}>{court}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Lawyer Filter */}
+          <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 flex-1 md:flex-none">
+            <Briefcase className="w-4 h-4 text-slate-400 shrink-0" />
+            <select 
+              value={lawyerFilter}
+              onChange={(e) => setLawyerFilter(e.target.value)}
+              className="bg-transparent border-none text-sm text-slate-700 dark:text-slate-300 focus:outline-none w-full cursor-pointer"
+            >
+              <option value="all">جميع المحامين</option>
+              <option value="محامي 1">محامي 1</option>
+              <option value="محامي 2">محامي 2</option>
+              <option value="محامي 3">محامي 3</option>
             </select>
           </div>
 
@@ -345,6 +429,18 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
                 </div>
 
                 <div>
+                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">نوع القضية <span className="text-red-500">*</span></label>
+                   <select required className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={formData.caseType} onChange={e => setFormData({...formData, caseType: e.target.value as CaseType})}>
+                      <option value="">اختر...</option>
+                      {Object.values(CaseType).map(type => <option key={type} value={type}>{type}</option>)}
+                   </select>
+                </div>
+                <div>
+                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ القيد</label>
+                   <input type="date" className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={formData.filingDate} onChange={e => setFormData({...formData, filingDate: e.target.value})} />
+                </div>
+
+                <div>
                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">المحكمة المختصة <span className="text-red-500">*</span></label>
                    <select required className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={formData.court} onChange={e => setFormData({...formData, court: e.target.value})}>
                       <option value="">اختر...</option>
@@ -365,6 +461,10 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
                    <input type="text" className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={formData.judgeName} onChange={e => setFormData({...formData, judgeName: e.target.value})} />
                 </div>
 
+                <div>
+                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">المحامي المسؤول</label>
+                   <input type="text" className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={formData.assignedLawyer} onChange={e => setFormData({...formData, assignedLawyer: e.target.value})} placeholder="اسم المحامي المكلف بالقضية" />
+                </div>
                 <div>
                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">الموكل <span className="text-red-500">*</span></label>
                    <select required className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={formData.clientId} onChange={e => setFormData({...formData, clientId: e.target.value})}>

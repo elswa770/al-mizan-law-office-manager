@@ -7,6 +7,17 @@ export enum CaseStatus {
   EXECUTION = 'قيد التنفيذ'
 }
 
+export enum CaseType {
+  CIVIL_CASE = 'قضية مدنية',
+  CRIMINAL_CASE = 'قضية جنائية',
+  FAMILY_CASE = 'قضية أسرة',
+  ADMINISTRATIVE_CASE = 'قضية مجلس دولة',
+  LABOR_CASE = 'قضية عمالية',
+  COMMERCIAL_CASE = 'قضية تجارية',
+  ECONOMIC_CASE = 'قضية اقتصادية',
+  OTHER_CASE = 'قضية أخرى'
+}
+
 export enum HearingStatus {
   SCHEDULED = 'محددة',
   COMPLETED = 'تمت',
@@ -26,13 +37,15 @@ export enum ClientStatus {
 }
 
 export enum CourtType {
-  FAMILY = 'أسرة',
+  FAMILY_COURT = 'محكمة الأسرة',
   CRIMINAL = 'جنايات',
   MISDEMEANOR = 'جنح',
-  CIVIL = 'مدني',
-  ADMINISTRATIVE = 'مجلس دولة',
-  ECONOMIC = 'اقتصادية',
-  LABOR = 'عمالي'
+  CIVIL_COURT = 'محكمة مدنية',
+  ADMINISTRATIVE_COURT = 'محكمة مجلس دولة',
+  ECONOMIC_COURT = 'محكمة اقتصادية',
+  COMMERCIAL_COURT = 'محكمة تجارية',
+  LABOR_COURT = 'محكمة عمالية',
+  OTHER_COURT = 'محكمة أخرى'
 }
 
 export type PermissionLevel = 'none' | 'read' | 'write';
@@ -187,6 +200,12 @@ export interface Case {
   aiChatHistory?: ChatMessage[];
   description?: string;
   startDate?: string;
+  // New fields for advanced case tracking
+  assignedLawyer?: string;
+  caseType: CaseType;
+  filingDate?: string;
+  hearings?: Hearing[];
+  deadlines?: string[];
 }
 
 export interface HearingExpenses {

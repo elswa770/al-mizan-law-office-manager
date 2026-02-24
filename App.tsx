@@ -316,7 +316,7 @@ function App() {
   const handleAddCase = async (newCase: Case) => {
     try {
       const caseId = await addCase(newCase);
-      setCases(prev => [{ ...newCase, id: caseId }, ...prev]);
+      setCases(prev => [...prev, { ...newCase, id: caseId }]);
       
       // Log activity
       await handleAddActivity({

@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Case, Client, Hearing, CaseStatus, CaseDocument, FinancialTransaction, PaymentMethod, HearingStatus } from '../types';
+import { Case, Client, Hearing, CaseStatus, CaseDocument, FinancialTransaction, PaymentMethod, HearingStatus, CaseType } from '../types';
 import { ArrowRight, Edit3, Calendar, FileText, Briefcase, MapPin, User, Shield, Save, X, Activity, DollarSign, Clock, CheckCircle, AlertCircle, Phone, Gavel, MoreVertical, Plus, Upload, FileCheck, Eye, Trash2, Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Calculator, Edit, Users } from 'lucide-react';
 
 interface CaseDetailsProps {
@@ -824,6 +824,32 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                        <select value={editCaseData.status} onChange={e => setEditCaseData({...editCaseData, status: e.target.value as CaseStatus})} className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
                           {Object.values(CaseStatus).map(s => <option key={s} value={s}>{s}</option>)}
                        </select>
+                    </div>
+                    <div>
+                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">المحامي المسؤول</label>
+                       <input 
+                          type="text" 
+                          value={editCaseData.assignedLawyer || ''} 
+                          onChange={e => setEditCaseData({...editCaseData, assignedLawyer: e.target.value})} 
+                          className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                          placeholder="اسم المحامي المكلف بالقضية..."
+                       />
+                    </div>
+                    <div>
+                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">نوع القضية</label>
+                       <select value={editCaseData.caseType || ''} onChange={e => setEditCaseData({...editCaseData, caseType: e.target.value as CaseType})} className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                          <option value="">اختر...</option>
+                          {Object.values(CaseType).map(type => <option key={type} value={type}>{type}</option>)}
+                       </select>
+                    </div>
+                    <div>
+                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ القيد</label>
+                       <input 
+                          type="date" 
+                          value={editCaseData.filingDate || ''} 
+                          onChange={e => setEditCaseData({...editCaseData, filingDate: e.target.value})} 
+                          className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                       />
                     </div>
 
                     {/* Opponent Editing Fields */}
