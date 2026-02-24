@@ -505,6 +505,16 @@ function App() {
     }
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await deleteAppUser(userId);
+      setUsers(prev => prev.filter(u => u.id !== userId));
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      setError('فشل في حذف المستخدم');
+    }
+  };
+
   const handleAddActivity = async (activity: Omit<ActivityLog, 'id'>) => {
     try {
       const activityId = await addActivity(activity);
@@ -819,6 +829,7 @@ function App() {
           clients={clients} 
           hearings={hearings}
           onUpdateCase={handleUpdateCase}
+          onAddActivity={handleAddActivity}
           canViewIncome={hasAccess('fees')}
           canViewExpenses={hasAccess('expenses')}
           readOnly={isReadOnly('fees') && isReadOnly('expenses')}

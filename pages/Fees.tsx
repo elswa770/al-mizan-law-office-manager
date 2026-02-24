@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Case, Client, Hearing, PaymentMethod, FinancialTransaction } from '../types';
+import { Case, Client, Hearing, PaymentMethod, FinancialTransaction, ActivityLog } from '../types';
 import { Wallet, TrendingUp, TrendingDown, DollarSign, PieChart, ArrowUpRight, ArrowDownLeft, Filter, Search, Plus, CreditCard, Calendar, FileText, AlertCircle, CheckCircle, Calculator, User, Receipt, X, Building, Smartphone, Banknote, ScrollText, Printer, Share2, Download } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
@@ -10,12 +10,13 @@ interface FeesProps {
   clients: Client[];
   hearings: Hearing[];
   onUpdateCase?: (updatedCase: Case) => void;
+  onAddActivity?: (activity: Omit<ActivityLog, 'id'>) => void;
   canViewIncome?: boolean; // New prop
   canViewExpenses?: boolean; // New prop
   readOnly?: boolean;
 }
 
-const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, canViewIncome = true, canViewExpenses = true, readOnly = false }) => {
+const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, onAddActivity, canViewIncome = true, canViewExpenses = true, readOnly = false }) => {
   // --- State ---
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'expenses'>('overview');
@@ -42,8 +43,15 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
 
   // --- Activity Logging ---
   const logActivity = (action: string, target: string, user: string = 'مستخدم') => {
-    console.log('Activity logged:', { action, target, user, timestamp: new Date().toISOString() });
-    // In a real implementation, this would call the activity logging service
+    if (onAddActivity) {
+      const activity: Omit<ActivityLog, 'id'> = {
+        action,
+        target,
+        user,
+        timestamp: new Date().toISOString()
+      };
+      onAddActivity(activity);
+    }
   };
 
   // Handle Tab Logic based on Permissions
@@ -167,41 +175,46 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, can
     const targetCase = cases.find(c => c.id === transactionData.caseId);
     if (!targetCase) return;
 
-    const currentFinance = targetCase.finance || { agreedFees: 0, paidAmount: 0, expenses: 0, history: [] };
-    
-    const newTransaction: FinancialTransaction = {
-       id: Math.random().toString(36).substring(2, 9),
-       date: new Date().toISOString().split('T')[0],
-       amount: Number(transactionData.amount),
-       type: transactionData.type,
-       method: transactionData.type === 'payment' ? transactionData.method : undefined,
-       category: transactionData.type === 'expense' ? (transactionData.category || 'نثريات') : undefined,
-       description: transactionData.description,
-       recordedBy: 'المحامي' // In real app, use current user name
-    };
+    try {
+      const currentFinance = targetCase.finance || { agreedFees: 0, paidAmount: 0, expenses: 0, history: [] };
+      
+      const newTransaction: FinancialTransaction = {
+         id: Math.random().toString(36).substring(2, 9),
+         date: new Date().toISOString().split('T')[0],
+         amount: Number(transactionData.amount),
+         type: transactionData.type,
+         method: transactionData.type === 'payment' ? (transactionData.method || 'cash') : undefined,
+         category: transactionData.type === 'expense' ? (transactionData.category || 'نثريات') : undefined,
+         description: transactionData.description,
+         recordedBy: 'المحامي' // In real app, use current user name
+      };
 
-    let newFinance = { 
-       ...currentFinance,
-       history: [...(currentFinance.history || []), newTransaction]
-    };
+      let newFinance = { 
+         ...currentFinance,
+         history: [...(currentFinance.history || []), newTransaction]
+      };
 
-    if (transactionData.type === 'payment') {
-      newFinance.paidAmount += Number(transactionData.amount);
-    } else {
-      newFinance.expenses += Number(transactionData.amount);
+      if (transactionData.type === 'payment') {
+        newFinance.paidAmount += Number(transactionData.amount);
+      } else {
+        newFinance.expenses += Number(transactionData.amount);
+      }
+
+      onUpdateCase({
+        ...targetCase,
+        finance: newFinance
+      });
+
+      // Log activity
+      const actionType = transactionData.type === 'payment' ? 'تسجيل معاملة دفع' : 'تسجيل مصروفات';
+      logActivity(actionType, `${transactionData.description} - ${targetCase.title}`);
+
+      setIsTransactionModalOpen(false);
+      setTransactionData({ caseId: '', amount: 0, type: 'payment', description: '', method: 'cash', category: '' });
+    } catch (error) {
+      console.error('Error saving transaction:', error);
+      alert('حدث خطأ أثناء حفظ المعاملة. يرجى المحاولة مرة أخرى.');
     }
-
-    onUpdateCase({
-      ...targetCase,
-      finance: newFinance
-    });
-
-    // Log activity
-    const actionType = transactionData.type === 'payment' ? 'تسجيل معاملة دفع' : 'تسجيل مصروفات';
-    logActivity(actionType, `${transactionData.description} - ${targetCase.title}`);
-
-    setIsTransactionModalOpen(false);
-    setTransactionData({ caseId: '', amount: 0, type: 'payment', description: '', method: 'cash', category: '' });
   };
 
   const openTransactionModal = (caseId?: string) => {
