@@ -183,11 +183,17 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, onA
          date: new Date().toISOString().split('T')[0],
          amount: Number(transactionData.amount),
          type: transactionData.type,
-         method: transactionData.type === 'payment' ? (transactionData.method || 'cash') : undefined,
-         category: transactionData.type === 'expense' ? (transactionData.category || 'نثريات') : undefined,
          description: transactionData.description,
          recordedBy: 'المحامي' // In real app, use current user name
       };
+
+      // Add optional fields only if they have values
+      if (transactionData.type === 'payment' && transactionData.method) {
+        newTransaction.method = transactionData.method;
+      }
+      if (transactionData.type === 'expense' && transactionData.category) {
+        newTransaction.category = transactionData.category;
+      }
 
       let newFinance = { 
          ...currentFinance,
