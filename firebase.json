@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "al-mizan-law",
     "public": "dist",
     "ignore": [
       "firebase.json",
