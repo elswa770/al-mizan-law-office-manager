@@ -562,7 +562,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
            </div>
 
            {/* Remaining Dues */}
-           <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+           <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
               <div className="flex justify-between items-start mb-2">
                  <div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">المستحقات (متبقي)</p>
@@ -578,7 +578,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
            </div>
 
            {/* Expenses */}
-           <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+           <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
               <div className="flex justify-between items-start mb-2">
                  <div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">مصاريف القضية</p>
