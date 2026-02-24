@@ -583,10 +583,11 @@ ${typeLabel}
 
       {/* 2. Dashboard Stats (Hide completely if only Expenses) */}
       {canViewIncome ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           {renderStatCard('إجمالي الأتعاب المتفق عليها', stats.totalAgreed, TrendingUp, 'text-slate-700 dark:text-slate-300', 'قيمة العقود المسجلة')}
           {renderStatCard('إجمالي المحصل', stats.totalCollected, ArrowDownLeft, 'text-emerald-600', `نسبة التحصيل: ${stats.collectionRate}%`)}
           {renderStatCard('مستحقات (ديون)', stats.totalPending, AlertCircle, 'text-red-600 dark:text-red-400', 'أتعاب لم يتم تحصيلها')}
+          {renderStatCard('إجمالي المصاريف', stats.totalExpenses, ArrowUpRight, 'text-red-600 dark:text-red-400', 'مصروفات جميع القضايا')}
           {renderStatCard('صافي الدخل', stats.netIncome, Calculator, 'text-indigo-600 dark:text-indigo-400', `بعد خصم المصروفات (${stats.totalExpenses.toLocaleString()})`)}
         </div>
       ) : (
