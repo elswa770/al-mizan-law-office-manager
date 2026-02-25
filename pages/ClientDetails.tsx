@@ -1,7 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Client, Case, CaseStatus, POAFile, ClientType, Hearing, ClientDocument, ClientStatus } from '../types';
-import { ArrowRight, User, Phone, MapPin, Mail, FileText, Calendar, Briefcase, Hash, Save, X, ScrollText, AlertTriangle, Upload, Eye, CheckCircle, Trash2, Edit3, Plus, File, Building2, Wallet, BellRing, PhoneCall, MessageCircle, MoreVertical, Clock, Send, Copy } from 'lucide-react';
+import { ArrowRight, User, Phone, MapPin, Mail, FileText, Calendar, Briefcase, Hash, Save, X, ScrollText, AlertTriangle, Upload, Eye, CheckCircle, Trash2, Edit3, Plus, File, Building2, Wallet, BellRing, PhoneCall, MessageCircle, MoreVertical, Clock, Send, Copy, Cloud, Download } from 'lucide-react';
+import { googleDriveService } from '../services/googleDriveService';
 
 interface ClientDetailsProps {
   clientId: string;
@@ -35,8 +36,9 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
   
   // Doc Upload State
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
-  const [newDocData, setNewDocData] = useState<Partial<ClientDocument>>({ type: 'poa', name: '' });
+  const [newDocData, setNewDocData] = useState<Partial<ClientDocument>>({ type: 'poa', name: '', uploadToDrive: true });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // WhatsApp Modal State
@@ -96,6 +98,20 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
     }
   }, []);
 
+  // Initialize Google Drive
+  useEffect(() => {
+    const initGoogleDrive = async () => {
+      try {
+        await googleDriveService.initialize();
+        console.log('Google Drive initialized successfully');
+      } catch (error) {
+        console.error('Google Drive initialization failed:', error);
+      }
+    };
+    
+    initGoogleDrive();
+  }, []);
+
   useEffect(() => {
     // Show browser notifications when alerts exist and system notifications are enabled
     if (generalSettings?.enableSystemNotifications && alerts.length > 0) {
@@ -126,7 +142,26 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
   const handleSaveClient = (e: React.FormEvent) => {
     e.preventDefault();
     if (onUpdateClient && formData.name) {
-       onUpdateClient({ ...client, ...formData } as Client);
+       const updatedClient: Client = {
+         ...client,
+         name: formData.name,
+         type: formData.type as ClientType,
+         status: formData.status as ClientStatus,
+         nationalId: formData.nationalId || '',
+         phone: formData.phone || '',
+         secondaryPhone: formData.secondaryPhone || undefined,
+         address: formData.address || undefined,
+         email: formData.email || undefined,
+         notes: formData.notes || undefined,
+         nationality: formData.nationality || undefined,
+         dateOfBirth: formData.dateOfBirth || undefined,
+         companyRepresentative: formData.companyRepresentative || undefined,
+         documents: client.documents || [], // الحفاظ على المستندات الموجودة
+         poaFiles: client.poaFiles || [], // الحفاظ على ملفات التوكيل
+         poaExpiry: formData.poaExpiry || undefined
+       };
+       
+       onUpdateClient(updatedClient);
        setIsEditModalOpen(false);
     }
   };
@@ -138,30 +173,157 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
      }
   };
 
-  const handleSaveDocument = () => {
-     if (onUpdateClient && selectedFile && newDocData.name) {
-        const newDoc: ClientDocument = {
+  const handleSaveDocument = async () => {
+     if (!onUpdateClient || !selectedFile || !newDocData.name) return;
+
+     try {
+        const documentData: ClientDocument = {
            id: Math.random().toString(36).substring(2, 9),
            type: newDocData.type as any,
-           name: newDocData.name,
-           url: URL.createObjectURL(selectedFile),
+           name: newDocData.name || '',
+           url: '', // سيتم تحديثه بعد الرفع
            uploadDate: new Date().toISOString().split('T')[0],
-           issueDate: newDocData.issueDate,
-           expiryDate: newDocData.expiryDate,
-           notes: newDocData.notes
+           issueDate: newDocData.issueDate || undefined,
+           expiryDate: newDocData.expiryDate || undefined,
+           notes: newDocData.notes || undefined,
+           uploadToDrive: newDocData.uploadToDrive || false,
+           driveFileId: undefined,
+           driveLink: undefined,
+           driveContentLink: undefined,
+           uploadedToDrive: false
         };
-        
-        let updatedClient = { ...client, documents: [...(client.documents || []), newDoc] };
 
-        // If it's a POA, update the client's main expiration date for global alerts
+        // إذا تم اختيار التحميل إلى Google Drive
+        if (newDocData.uploadToDrive) {
+           setIsUploadingToDrive(true);
+           
+           // التحقق من تسجيل الدخول إلى Google
+           if (!googleDriveService.isSignedIn()) {
+             await googleDriveService.signIn();
+           }
+
+           // رفع الملف إلى Google Drive
+           console.log('Starting upload to Google Drive...');
+           console.log('File:', selectedFile);
+           console.log('Folder:', `الموكل ${client.name}`);
+           
+           const driveResponse = await googleDriveService.uploadFile(
+             selectedFile, 
+             `الموكل ${client.name}`
+           );
+           
+           console.log('Google Drive response:', driveResponse);
+
+           // تحديث البيانات بمعلومات Google Drive
+           documentData.driveFileId = driveResponse.fileId;
+           documentData.driveLink = driveResponse.webViewLink;
+           documentData.driveContentLink = driveResponse.webContentLink;
+           documentData.uploadedToDrive = true;
+           documentData.url = driveResponse.webViewLink;
+           
+           setIsUploadingToDrive(false);
+        } else {
+           // التحميل المحلي معطل مؤقتاً بسبب مشكلة CORS
+           alert('التحميل المحلي معطل مؤقتاً. يرجى اختيار "رفع إلى Google Drive".');
+           setIsUploadingToDrive(false);
+           return;
+        }
+
+        console.log('Final document data:', documentData);
+        console.log('Client current documents:', client.documents);
+
+        // التأكد من تهيئة مصفوفة المستندات (الآن إلزامية)
+        const currentDocuments = client.documents || [];
+        console.log('Current documents after null check:', currentDocuments);
+
+        let updatedClient = { 
+          ...client, 
+          documents: [...currentDocuments, documentData] 
+        };
+
+        // If it's a POA, update client's main expiration date for global alerts
         if (newDocData.type === 'poa' && newDocData.expiryDate) {
            updatedClient.poaExpiry = newDocData.expiryDate;
         }
 
-        onUpdateClient(updatedClient);
+        // تنظيف الحقول undefined قبل إرسالها
+        const cleanUpdatedClient: Client = {
+          id: updatedClient.id,
+          name: updatedClient.name,
+          type: updatedClient.type,
+          status: updatedClient.status,
+          nationalId: updatedClient.nationalId,
+          phone: updatedClient.phone,
+          documents: updatedClient.documents,
+          secondaryPhone: updatedClient.secondaryPhone,
+          address: updatedClient.address,
+          email: updatedClient.email,
+          notes: updatedClient.notes,
+          nationality: updatedClient.nationality,
+          dateOfBirth: updatedClient.dateOfBirth,
+          companyRepresentative: updatedClient.companyRepresentative,
+          poaFiles: updatedClient.poaFiles,
+          poaExpiry: updatedClient.poaExpiry
+        };
+
+        // دالة تنظيف قوية لإزالة جميع قيم undefined والحقول الفارغة
+        const cleanObject = (obj: any): any => {
+          const cleaned: any = {};
+          console.log('🔍 Cleaning object:', obj);
+          for (const key in obj) {
+            console.log(`🔍 Key: ${key}, Value:`, obj[key], 'Type:', typeof obj[key]);
+            if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
+              cleaned[key] = obj[key];
+              console.log(`✅ Keeping: ${key}`);
+            } else {
+              console.log(`❌ Removing: ${key}`);
+            }
+          }
+          console.log('🧹 Cleaned object:', cleaned);
+          return cleaned;
+        };
+
+        // تنظيف البيانات بشكل عميق
+        const finalCleanClient = cleanObject(cleanUpdatedClient);
+
+        console.log('Updated client:', updatedClient);
+        console.log('Clean updated client:', finalCleanClient);
+
+        // التحقق النهائي من عدم وجود undefined
+        const hasUndefined = Object.values(finalCleanClient).some(val => val === undefined);
+        console.log('🚨 Has undefined values:', hasUndefined);
+        if (hasUndefined) {
+          console.error('❌ ERROR: Still has undefined values!', finalCleanClient);
+        }
+
+        onUpdateClient(finalCleanClient as Client);
         setIsDocModalOpen(false);
-        setNewDocData({ type: 'poa', name: '' });
+        setNewDocData({ type: 'poa', name: '', uploadToDrive: true });
         setSelectedFile(null);
+        
+     } catch (error) {
+        console.error('Error saving document:', error);
+        setIsUploadingToDrive(false);
+        
+        // رسائل خطأ مفصلة
+        let errorMessage = 'حدث خطأ أثناء حفظ المستند. يرجى المحاولة مرة أخرى.';
+        
+        if (error instanceof Error) {
+           console.error('Error message:', error.message);
+           console.error('Error stack:', error.stack);
+           
+           if (error.message.includes('sign-in')) {
+             errorMessage = 'فشل تسجيل الدخول إلى Google. يرجى المحاولة مرة أخرى.';
+           } else if (error.message.includes('upload')) {
+             errorMessage = 'فشل رفع الملف إلى Google Drive. يرجى التحقق من اتصال الإنترنت وحجم الملف.';
+           } else if (error.message.includes('permission')) {
+             errorMessage = 'لا توجد صلاحية كافية للوصول إلى Google Drive. يرجى التحقق من الأذونات.';
+           } else if (error.message.includes('quota')) {
+             errorMessage = 'مساحة Google Drive ممتلئة. يرجى مسح بعض الملفات والمحاولة مرة أخرى.';
+           }
+        }
+        
+        alert(errorMessage);
      }
   };
 
@@ -487,41 +649,84 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
            {/* Legacy POAs mapping + New Documents */}
-           {[...(client.documents || []), ...(client.poaFiles || []).map(f => ({
-              id: f.id,
-              type: 'poa',
-              name: f.name,
-              url: f.url,
-              uploadDate: f.uploadDate,
-              expiryDate: client.poaExpiry
-           } as ClientDocument))].map((doc, i) => (
+           {[...(client.documents || []), ...(client.poaFiles || [])].map((doc, i) => {
+              // Ensure doc has all required ClientDocument properties
+              const clientDoc: ClientDocument = {
+                id: doc.id,
+                type: doc.type || 'other',
+                name: doc.name,
+                url: doc.url,
+                uploadDate: doc.uploadDate,
+                expiryDate: doc.expiryDate || (doc.type === 'poa' ? client.poaExpiry : undefined),
+                issueDate: doc.issueDate,
+                notes: doc.notes,
+                driveFileId: doc.driveFileId,
+                driveLink: doc.driveLink,
+                driveContentLink: doc.driveContentLink,
+                uploadedToDrive: doc.uploadedToDrive,
+                uploadToDrive: doc.uploadToDrive
+              };
+
+              return (
               <div key={i} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex items-start justify-between group">
                  <div className="flex items-start gap-3">
                     <div className="bg-slate-50 dark:bg-slate-700 p-2.5 rounded-lg text-slate-500 dark:text-slate-400">
                        <FileText className="w-5 h-5" />
                     </div>
                     <div>
-                       <p className="font-bold text-slate-800 dark:text-white text-sm">{doc.name}</p>
+                       <p className="font-bold text-slate-800 dark:text-white text-sm">{clientDoc.name}</p>
                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">
-                             {doc.type === 'poa' ? 'توكيل' : doc.type === 'national_id' ? 'بطاقة هوية' : 'مستند'}
+                             {clientDoc.type === 'poa' ? 'توكيل' : clientDoc.type === 'national_id' ? 'بطاقة هوية' : 'مستند'}
                           </span>
-                          {doc.expiryDate && (
-                             <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 ${new Date(doc.expiryDate) < new Date() ? 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400'}`}>
-                                {new Date(doc.expiryDate) < new Date() ? 'منتهي' : 'ساري'}
+                          {clientDoc.uploadedToDrive && (
+                             <span className="text-[10px] bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                <Cloud className="w-3 h-3" />
+                                Google Drive
                              </span>
                           )}
-                          {doc.issueDate && doc.type === 'poa' && (
-                             <span className="text-[10px] text-slate-400">إصدار: {doc.issueDate}</span>
+                          {clientDoc.expiryDate && (
+                             <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 ${new Date(clientDoc.expiryDate) < new Date() ? 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400' : 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400'}`}>
+                                {new Date(clientDoc.expiryDate) < new Date() ? 'منتهي' : 'ساري'}
+                             </span>
+                          )}
+                          {clientDoc.issueDate && clientDoc.type === 'poa' && (
+                             <span className="text-[10px] text-slate-400">إصدار: {clientDoc.issueDate}</span>
                           )}
                        </div>
                     </div>
                  </div>
-                 <a href={doc.url} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-400 hover:text-primary-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg">
-                    <Eye className="w-4 h-4" />
-                 </a>
+                 <div className="flex items-center gap-1">
+                 {clientDoc.uploadedToDrive ? (
+                    <>
+                       <a 
+                          href={clientDoc.driveLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg"
+                          title="معاينة في Google Drive"
+                       >
+                          <Eye className="w-4 h-4" />
+                       </a>
+                       <a 
+                          href={clientDoc.driveContentLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg"
+                          title="تحميل من Google Drive"
+                       >
+                          <Download className="w-4 h-4" />
+                       </a>
+                    </>
+                 ) : (
+                    <a href={clientDoc.url} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-400 hover:text-primary-600 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg">
+                       <Eye className="w-4 h-4" />
+                    </a>
+                 )}
               </div>
-           ))}
+              </div>
+           );
+           })}
            {[...(client.documents || []), ...(client.poaFiles || [])].length === 0 && (
               <div className="col-span-full py-12 text-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
                  <File className="w-10 h-10 mx-auto mb-2 opacity-50" />
@@ -775,6 +980,25 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
                   <input type="text" placeholder="اسم المستند (مثال: توكيل عام 2024)" value={newDocData.name} onChange={e => setNewDocData({...newDocData, name: e.target.value})} className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" />
                   <textarea placeholder="ملاحظات..." value={newDocData.notes || ''} onChange={e => setNewDocData({...newDocData, notes: e.target.value})} className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" rows={2}></textarea>
                   
+                  {/* Google Drive Upload Option */}
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                     <label className="flex items-center gap-2 cursor-pointer">
+                        <input 
+                           type="checkbox" 
+                           checked={newDocData.uploadToDrive || false} 
+                           onChange={e => setNewDocData({...newDocData, uploadToDrive: e.target.checked})}
+                           className="w-4 h-4 text-blue-600 rounded border-blue-300 focus:ring-blue-500"
+                        />
+                        <div className="flex items-center gap-2">
+                           <Cloud className="w-4 h-4 text-blue-600" />
+                           <span className="text-sm font-medium text-blue-700 dark:text-blue-300">رفع إلى Google Drive</span>
+                        </div>
+                     </label>
+                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 mr-6">
+                        سيتم حفظ المستند في Google Drive والوصول إليه من أي جهاز
+                     </p>
+                  </div>
+                  
                   <input type="file" ref={fileInputRef} className="hidden" onChange={handleDocFileSelect} />
                   <div onClick={() => fileInputRef.current?.click()} className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700">
                      {selectedFile ? (
@@ -789,7 +1013,23 @@ const ClientDetails: React.FC<ClientDetailsProps> = ({ clientId, clients, cases,
                </div>
                <div className="flex gap-2 mt-4">
                   <button onClick={() => setIsDocModalOpen(false)} className="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 p-2 rounded-lg">إلغاء</button>
-                  <button onClick={handleSaveDocument} disabled={!selectedFile || !newDocData.name} className="flex-1 bg-primary-600 text-white p-2 rounded-lg disabled:opacity-50">رفع المستند</button>
+                  <button 
+                     onClick={handleSaveDocument} 
+                     disabled={!selectedFile || !newDocData.name || isUploadingToDrive} 
+                     className="flex-1 bg-primary-600 text-white p-2 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                     {isUploadingToDrive ? (
+                        <>
+                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                           <span>جاري الرفع...</span>
+                        </>
+                     ) : (
+                        <>
+                           <Cloud className="w-4 h-4" />
+                           <span>رفع المستند</span>
+                        </>
+                     )}
+                  </button>
                </div>
             </div>
          </div>

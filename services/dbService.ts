@@ -23,14 +23,84 @@ export const getClients = async (): Promise<Client[]> => {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
 };
 
+// دالة تنظيف قوية لإزالة جميع قيم undefined والحقول الفارغة
+const cleanObject = (obj: any): any => {
+  const cleaned: any = {};
+  for (const key in obj) {
+    const value = obj[key];
+    
+    // تخطي الحقول undefined و null و empty strings
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+    
+    // إذا كانت مصفوفة، قم بتنظيف كل عنصر فيها بشكل متكرر
+    if (Array.isArray(value)) {
+      cleaned[key] = value.map(item => {
+        if (typeof item === 'object' && item !== null) {
+          return cleanObject(item);
+        }
+        return item;
+      });
+    } 
+    // إذا كان كائن، قم بتنظيفه بشكل متكرر
+    else if (typeof value === 'object' && value !== null) {
+      cleaned[key] = cleanObject(value);
+    } 
+    // القيم البسيطة، احتفظ بها
+    else {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+};
+
 export const addClient = async (client: Omit<Client, 'id'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, "clients"), client);
+  // تنظيف الحقول undefined قبل إرسالها إلى Firebase
+  const cleanClient = cleanObject(client);
+  
+  const docRef = await addDoc(collection(db, "clients"), cleanClient);
   return docRef.id;
 };
 
 export const updateClient = async (id: string, client: Partial<Client>) => {
+  console.log('🔥 dbService.ts - updateClient called with id:', id);
+  console.log('🔥 dbService.ts - updateClient called with client:', client);
+  
+  // فحص المستندات بشكل خاص
+  if (client.documents) {
+    console.log('📄 Documents array found:', client.documents);
+    client.documents.forEach((doc, index) => {
+      console.log(`📄 Document ${index}:`, doc);
+      console.log(`📄 Document ${index} keys:`, Object.keys(doc));
+      Object.entries(doc).forEach(([key, value]) => {
+        if (value === undefined) {
+          console.error(`❌ Found undefined in document ${index}, key: ${key}`);
+        }
+      });
+    });
+  }
+  
+  // إزالة حقل id من البيانات قبل التنظيف
+  const { id: _, ...clientWithoutId } = client;
+  
+  // تنظيف الحقول undefined قبل إرسالها إلى Firebase
+  const cleanClient = cleanObject(clientWithoutId);
+  
+  console.log('🧹 dbService.ts - Cleaned client:', cleanClient);
+  
+  // التحقق النهائي
+  const hasUndefined = Object.values(cleanClient).some(val => val === undefined);
+  console.log('🚨 dbService.ts - Has undefined values:', hasUndefined);
+  if (hasUndefined) {
+    console.error('❌ dbService.ts ERROR: Still has undefined values!', cleanClient);
+    throw new Error('Cannot update client with undefined values');
+  }
+  
   const docRef = doc(db, "clients", id);
-  await updateDoc(docRef, client);
+  console.log('📤 dbService.ts - Sending to Firebase:', cleanClient);
+  await updateDoc(docRef, cleanClient);
+  console.log('✅ dbService.ts - Firebase update successful');
 };
 
 export const deleteClient = async (id: string) => {
@@ -44,14 +114,23 @@ export const getCases = async (): Promise<Case[]> => {
 };
 
 export const addCase = async (caseData: Omit<Case, 'id'>): Promise<string> => {
-  const docRef = await addDoc(collection(db, "cases"), caseData);
+  // تنظيف الحقول undefined قبل إرسالها إلى Firebase
+  const cleanCaseData = cleanObject(caseData);
+  
+  const docRef = await addDoc(collection(db, "cases"), cleanCaseData);
   return docRef.id;
 };
 
 export const updateCase = async (id: string, caseData: Partial<Case>) => {
+  // إزالة حقل id من البيانات قبل التنظيف
+  const { id: _, ...caseWithoutId } = caseData;
+  
+  // تنظيف الحقول undefined قبل إرسالها إلى Firebase
+  const cleanCaseData = cleanObject(caseWithoutId);
+  
   const docRef = doc(db, "cases", id);
   try {
-    await updateDoc(docRef, caseData);
+    await updateDoc(docRef, cleanCaseData);
   } catch (error) {
     // If document doesn't exist, create it with setDoc
     if (error instanceof Error && error.message.includes('No document to update')) {

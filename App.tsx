@@ -401,7 +401,20 @@ function App() {
 
   const handleAddClient = async (newClient: Client) => {
     try {
-      const clientId = await addClient(newClient);
+      // دالة تنظيف قوية لإزالة جميع قيم undefined والحقول الفارغة
+      const cleanObject = (obj: any): any => {
+        const cleaned: any = {};
+        for (const key in obj) {
+          if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
+            cleaned[key] = obj[key];
+          }
+        }
+        return cleaned;
+      };
+      
+      const cleanClient = cleanObject(newClient);
+      
+      const clientId = await addClient(cleanClient);
       setClients(prev => [{ ...newClient, id: clientId }, ...prev]);
       
       // Log activity
@@ -419,7 +432,36 @@ function App() {
 
   const handleUpdateClient = async (updatedClient: Client) => {
     try {
-      await updateClient(updatedClient.id, updatedClient);
+      console.log('🔄 App.tsx - handleUpdateClient called with:', updatedClient);
+      
+      // دالة تنظيف قوية لإزالة جميع قيم undefined والحقول الفارغة
+      const cleanObject = (obj: any): any => {
+        const cleaned: any = {};
+        console.log('🔍 App.tsx - Cleaning object:', obj);
+        for (const key in obj) {
+          console.log(`🔍 App.tsx - Key: ${key}, Value:`, obj[key], 'Type:', typeof obj[key]);
+          if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
+            cleaned[key] = obj[key];
+            console.log(`✅ App.tsx - Keeping: ${key}`);
+          } else {
+            console.log(`❌ App.tsx - Removing: ${key}`);
+          }
+        }
+        console.log('🧹 App.tsx - Cleaned object:', cleaned);
+        return cleaned;
+      };
+      
+      const cleanClient = cleanObject(updatedClient);
+      
+      // التحقق النهائي
+      const hasUndefined = Object.values(cleanClient).some(val => val === undefined);
+      console.log('🚨 App.tsx - Has undefined values:', hasUndefined);
+      if (hasUndefined) {
+        console.error('❌ App.tsx ERROR: Still has undefined values!', cleanClient);
+      }
+      
+      console.log('📤 App.tsx - Sending to updateClient:', cleanClient);
+      await updateClient(updatedClient.id, cleanClient);
       setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
       
       // Log activity

@@ -206,13 +206,14 @@ const Clients: React.FC<ClientsProps> = ({ clients, cases, hearings, onClientCli
       status: formData.status as ClientStatus,
       nationalId: formData.nationalId || '',
       phone: formData.phone || '',
-      secondaryPhone: formData.secondaryPhone,
-      address: formData.address,
-      email: formData.email,
-      notes: formData.notes,
-      nationality: formData.nationality,
-      dateOfBirth: formData.dateOfBirth,
-      companyRepresentative: formData.companyRepresentative
+      documents: [], // تهيئة مصفوفة المستندات
+      secondaryPhone: formData.secondaryPhone || undefined,
+      address: formData.address || undefined,
+      email: formData.email || undefined,
+      notes: formData.notes || undefined,
+      nationality: formData.nationality || undefined,
+      dateOfBirth: formData.dateOfBirth || undefined,
+      companyRepresentative: formData.companyRepresentative || undefined
     };
     
     onAddClient(newClient);

@@ -80,6 +80,12 @@ export interface ClientDocument {
   expiryDate?: string;
   issueDate?: string;
   notes?: string;
+  // Google Drive fields
+  driveFileId?: string;
+  driveLink?: string;
+  driveContentLink?: string;
+  uploadedToDrive?: boolean;
+  uploadToDrive?: boolean;
 }
 
 export interface POAFile extends ClientDocument {}
@@ -98,7 +104,7 @@ export interface Client {
   nationality?: string;
   dateOfBirth?: string;
   companyRepresentative?: string;
-  documents?: ClientDocument[];
+  documents: ClientDocument[];
   poaFiles?: POAFile[];
   poaExpiry?: string;
 }

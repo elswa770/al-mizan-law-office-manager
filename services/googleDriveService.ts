@@ -148,11 +148,24 @@ class GoogleDriveService {
         // إنشاء أو الحصول على مجلد المكتب الرئيسي
         const mainFolderId = await this.getOrCreateFolder('المكتب - الميزان');
         
-        // إنشاء أو الحصول على مجلد القضايا
-        const casesFolderId = await this.getOrCreateFolderInParent('القضايا', mainFolderId);
+        // التحقق إذا كان اسم المجلد يبدأ بـ "القضية" أو "الموكل"
+        if (folderName.startsWith('القضية')) {
+          // إنشاء أو الحصول على مجلد القضايا
+          const casesFolderId = await this.getOrCreateFolderInParent('القضايا', mainFolderId);
+          
+          // إنشاء مجلد القضية المحددة
+          folderId = await this.getOrCreateFolderInParent(folderName, casesFolderId);
+        } else if (folderName.startsWith('الموكل')) {
+          // إنشاء أو الحصول على مجلد الموكلين
+          const clientsFolderId = await this.getOrCreateFolderInParent('الموكلون', mainFolderId);
+          
+          // إنشاء مجلد الموكل المحدد
+          folderId = await this.getOrCreateFolderInParent(folderName, clientsFolderId);
+        } else {
+          // افتراضي: ضع في مجلد عام
+          folderId = await this.getOrCreateFolderInParent('مستندات عامة', mainFolderId);
+        }
         
-        // إنشاء مجلد القضية المحددة
-        folderId = await this.getOrCreateFolderInParent(folderName, casesFolderId);
         console.log('Final folder ID:', folderId);
       }
 
