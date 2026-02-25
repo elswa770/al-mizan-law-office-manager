@@ -201,8 +201,8 @@ export interface Case {
   description?: string;
   startDate?: string;
   // New fields for advanced case tracking
-  assignedLawyer?: string;
-  caseType: CaseType;
+  assignedLawyerId?: string;
+  caseType?: LawBranch;
   filingDate?: string;
   hearings?: Hearing[];
   deadlines?: string[];

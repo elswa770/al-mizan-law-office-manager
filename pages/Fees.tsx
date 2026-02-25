@@ -170,10 +170,31 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, onA
 
   const handleTransactionSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!onUpdateCase || !transactionData.caseId) return;
+    if (!onUpdateCase || !transactionData.caseId) {
+      console.error('Missing required data:', { caseId: transactionData.caseId });
+      alert('الرجاء اختيار القضية أولاً');
+      return;
+    }
 
     const targetCase = cases.find(c => c.id === transactionData.caseId);
-    if (!targetCase) return;
+    if (!targetCase) {
+      console.error('Case not found:', { caseId: transactionData.caseId });
+      alert('القضية المحددة غير موجودة');
+      return;
+    }
+
+    // Validate transaction data
+    if (!transactionData.amount || Number(transactionData.amount) <= 0) {
+      console.error('Invalid amount:', { amount: transactionData.amount });
+      alert('يرجى إدخال مبلغ صحيح');
+      return;
+    }
+
+    if (!transactionData.description || transactionData.description.trim() === '') {
+      console.error('Missing description:', { description: transactionData.description });
+      alert('يرجى إدخال وصف للمعاملة');
+      return;
+    }
 
     try {
       const currentFinance = targetCase.finance || { agreedFees: 0, paidAmount: 0, expenses: 0, history: [] };
@@ -206,20 +227,34 @@ const Fees: React.FC<FeesProps> = ({ cases, clients, hearings, onUpdateCase, onA
         newFinance.expenses += Number(transactionData.amount);
       }
 
-      onUpdateCase({
-        ...targetCase,
-        finance: newFinance
+      console.log('Processing transaction:', { 
+        caseId: targetCase.id,
+        transaction: newTransaction,
+        newFinance: newFinance
       });
+
+      // Only update case if explicitly requested or if this is the first financial transaction
+      const shouldUpdateCase = !targetCase.finance || targetCase.finance.history.length === 0;
+      
+      if (shouldUpdateCase) {
+        console.log('Updating case with new finance:', newFinance);
+        onUpdateCase({
+          ...targetCase,
+          finance: newFinance
+        });
+      }
 
       // Log activity
       const actionType = transactionData.type === 'payment' ? 'تسجيل معاملة دفع' : 'تسجيل مصروفات';
       logActivity(actionType, `${transactionData.description} - ${targetCase.title}`);
-
+      
       setIsTransactionModalOpen(false);
       setTransactionData({ caseId: '', amount: 0, type: 'payment', description: '', method: 'cash', category: '' });
-    } catch (error) {
-      console.error('Error saving transaction:', error);
-      alert('حدث خطأ أثناء حفظ المعاملة. يرجى المحاولة مرة أخرى.');
+      
+      alert('تمت إضافة المعاملة المالية بنجاح');
+    } catch (err) {
+      console.error('Error processing transaction:', err);
+      alert('فشل في معاملة العملية المالية');
     }
   };
 

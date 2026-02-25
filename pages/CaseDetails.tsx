@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Case, Client, Hearing, CaseStatus, CaseDocument, FinancialTransaction, PaymentMethod, HearingStatus, CaseType } from '../types';
+import { Case, Client, Hearing, CaseStatus, CaseDocument, FinancialTransaction, PaymentMethod } from '../types';
 import { ArrowRight, Edit3, Calendar, FileText, Briefcase, MapPin, User, Shield, Save, X, Activity, DollarSign, Clock, CheckCircle, AlertCircle, Phone, Gavel, MoreVertical, Plus, Upload, FileCheck, Eye, Trash2, Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Calculator, Edit, Users } from 'lucide-react';
 
 interface CaseDetailsProps {
@@ -12,12 +12,10 @@ interface CaseDetailsProps {
   onAddHearing?: (hearing: Hearing) => void;
   onUpdateCase?: (updatedCase: Case) => void;
   onUpdateHearing?: (hearing: Hearing) => void;
-  onDeleteHearing?: (hearingId: string) => void;
   onClientClick?: (clientId: string) => void;
-  readOnly?: boolean;
 }
 
-const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, hearings, onBack, onAddHearing, onUpdateCase, onUpdateHearing, onDeleteHearing, onClientClick, readOnly = false }) => {
+const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, hearings, onBack, onAddHearing, onUpdateCase, onUpdateHearing, onClientClick }) => {
   const currentCase = cases.find(c => c.id === caseId);
   const [activeTab, setActiveTab] = useState<'overview' | 'hearings' | 'documents' | 'finance'>('overview');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -40,72 +38,10 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
   // Fees Edit State
   const [isFeesModalOpen, setIsFeesModalOpen] = useState(false);
   const [newFeeValue, setNewFeeValue] = useState<number>(0);
-  
-  // Hearing Modal State
-  const [isHearingModalOpen, setIsHearingModalOpen] = useState(false);
-  const [newHearingData, setNewHearingData] = useState({
-    date: '',
-    time: '',
-    requirements: '',
-    status: 'محددة' as HearingStatus,
-    decision: '',
-    rulingUrl: '',
-    expenses: { amount: 0, paidBy: 'lawyer' as 'lawyer' | 'client', description: '' }
-  });
-
-  // Add Hearing Handler
-  const handleAddHearing = () => {
-    setIsHearingModalOpen(true);
-    setNewHearingData({
-      date: new Date().toISOString().split('T')[0],
-      time: '',
-      requirements: '',
-      status: 'محددة' as HearingStatus,
-      decision: '',
-      rulingUrl: '',
-      expenses: { amount: 0, paidBy: 'lawyer' as 'lawyer' | 'client', description: '' }
-    });
-  };
-
-  // Delete Hearing Handler
-  const handleDeleteHearing = (hearingId: string) => {
-    if (window.confirm('هل أنت متأكد من حذف هذه الجلسة؟')) {
-      onDeleteHearing && onDeleteHearing(hearingId);
-    }
-  };
-
-  // Save Hearing Handler
-  const handleSaveHearing = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!onAddHearing || !newHearingData.date) return;
-
-    onAddHearing({
-      id: '',
-      caseId,
-      date: newHearingData.date,
-      time: newHearingData.time,
-      requirements: newHearingData.requirements,
-      status: newHearingData.status,
-      decision: newHearingData.decision,
-      rulingUrl: newHearingData.rulingUrl,
-      expenses: newHearingData.expenses
-    } as any);
-
-    setIsHearingModalOpen(false);
-    setNewHearingData({
-      date: '',
-      time: '',
-      requirements: '',
-      status: 'محددة' as HearingStatus,
-      decision: '',
-      rulingUrl: '',
-      expenses: { amount: 0, paidBy: 'lawyer' as 'lawyer' | 'client', description: '' }
-    });
-  };
 
   if (!currentCase) return <div className="p-8 text-center text-slate-500">القضية غير موجودة</div>;
   
-  const caseHearings = hearings.filter(h => h.caseId === caseId).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const caseHearings = hearings.filter(h => h.caseId === caseId).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const nextHearing = caseHearings.find(h => new Date(h.date) >= new Date(new Date().setHours(0,0,0,0))) || caseHearings[0];
   const client = clients.find(c => c.id === currentCase.clientId);
 
@@ -417,7 +353,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
               <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> سجل الجلسات
            </h3>
            <button 
-             onClick={handleAddHearing}
+             onClick={() => onAddHearing && onAddHearing({ id: '', caseId, date: new Date().toISOString().split('T')[0], status: 'محددة' } as any)}
              className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center gap-1"
            >
               <Plus className="w-3 h-3" /> جلسة جديدة
@@ -452,14 +388,6 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                              <a href={h.rulingUrl} target="_blank" rel="noopener noreferrer" className="text-xs flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline bg-white dark:bg-slate-700 px-2 py-1 rounded border border-indigo-100 dark:border-slate-600">
                                 <FileText className="w-3 h-3" /> الحكم/المحضر
                              </a>
-                          )}
-                          {!readOnly && (
-                             <button 
-                                onClick={() => handleDeleteHearing(h.id)}
-                                className="text-xs flex items-center gap-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded border border-red-100 dark:border-red-800/30"
-                             >
-                                <Trash2 className="w-3 h-3" /> حذف
-                             </button>
                           )}
                        </div>
                     </div>
@@ -562,7 +490,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
            </div>
 
            {/* Remaining Dues */}
-           <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
+           <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
               <div className="flex justify-between items-start mb-2">
                  <div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">المستحقات (متبقي)</p>
@@ -578,7 +506,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
            </div>
 
            {/* Expenses */}
-           <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
+           <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
               <div className="flex justify-between items-start mb-2">
                  <div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">مصاريف القضية</p>
@@ -732,65 +660,6 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
           {activeTab === 'finance' && renderFinanceTab()}
        </div>
 
-       {/* Add Hearing Modal */}
-       {isHearingModalOpen && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6 animate-in zoom-in-95">
-                <div className="flex justify-between items-center mb-4 border-b border-slate-100 dark:border-slate-700 pb-4">
-                   <h3 className="font-bold text-lg text-slate-800 dark:text-white">إضافة جلسة جديدة</h3>
-                   <button onClick={() => setIsHearingModalOpen(false)}><X className="w-5 h-5 text-slate-400 hover:text-red-500" /></button>
-                </div>
-                <form onSubmit={handleSaveHearing} className="space-y-4">
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">التاريخ</label>
-                      <input 
-                        type="date" 
-                        required 
-                        className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" 
-                        value={newHearingData.date} 
-                        onChange={e => setNewHearingData({...newHearingData, date: e.target.value})} 
-                      />
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">الوقت</label>
-                      <input 
-                        type="time" 
-                        className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" 
-                        value={newHearingData.time} 
-                        onChange={e => setNewHearingData({...newHearingData, time: e.target.value})} 
-                      />
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">المطلوب للجلسة</label>
-                      <textarea 
-                        placeholder="المطلوب للجلسة..." 
-                        className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" 
-                        rows={3} 
-                        value={newHearingData.requirements} 
-                        onChange={e => setNewHearingData({...newHearingData, requirements: e.target.value})}
-                      ></textarea>
-                   </div>
-                   <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">الحالة</label>
-                      <select 
-                        className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" 
-                        value={newHearingData.status} 
-                        onChange={e => setNewHearingData({...newHearingData, status: e.target.value as HearingStatus})}
-                      >
-                        <option value="محددة">محددة</option>
-                        <option value="منعقدة">منعقدة</option>
-                        <option value="مؤجلة">مؤجلة</option>
-                        <option value="ملغية">ملغية</option>
-                      </select>
-                   </div>
-                   <button type="submit" className="w-full bg-indigo-600 text-white p-2 rounded font-bold hover:bg-indigo-700">
-                      حفظ الجلسة
-                   </button>
-                </form>
-             </div>
-          </div>
-       )}
-
        {/* Edit Modal */}
        {isEditModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -824,32 +693,6 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                        <select value={editCaseData.status} onChange={e => setEditCaseData({...editCaseData, status: e.target.value as CaseStatus})} className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
                           {Object.values(CaseStatus).map(s => <option key={s} value={s}>{s}</option>)}
                        </select>
-                    </div>
-                    <div>
-                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">المحامي المسؤول</label>
-                       <input 
-                          type="text" 
-                          value={editCaseData.assignedLawyer || ''} 
-                          onChange={e => setEditCaseData({...editCaseData, assignedLawyer: e.target.value})} 
-                          className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
-                          placeholder="اسم المحامي المكلف بالقضية..."
-                       />
-                    </div>
-                    <div>
-                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">نوع القضية</label>
-                       <select value={editCaseData.caseType || ''} onChange={e => setEditCaseData({...editCaseData, caseType: e.target.value as CaseType})} className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                          <option value="">اختر...</option>
-                          {Object.values(CaseType).map(type => <option key={type} value={type}>{type}</option>)}
-                       </select>
-                    </div>
-                    <div>
-                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ القيد</label>
-                       <input 
-                          type="date" 
-                          value={editCaseData.filingDate || ''} 
-                          onChange={e => setEditCaseData({...editCaseData, filingDate: e.target.value})} 
-                          className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
-                       />
                     </div>
 
                     {/* Opponent Editing Fields */}
