@@ -19,8 +19,8 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
   const currentCase = cases.find(c => c.id === caseId);
   const [activeTab, setActiveTab] = useState<'overview' | 'hearings' | 'documents' | 'finance'>('overview');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  
-  // Edit State
+  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+  const [isHearingModalOpen, setIsHearingModalOpen] = useState(false);
   const [editCaseData, setEditCaseData] = useState<Partial<Case>>({});
   // Opponent Edit State (Simulate primary opponent editing)
   const [editOpponentName, setEditOpponentName] = useState('');
@@ -32,9 +32,20 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
   const [editActionPlan, setEditActionPlan] = useState('');
 
   // Documents State
-  const [isDocModalOpen, setIsDocModalOpen] = useState(false);
   const [newDocData, setNewDocData] = useState<{name: string, type: string, category: string, file: File | null}>({ name: '', type: 'pdf', category: 'other', file: null });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // New Hearing State
+  const [newHearingData, setNewHearingData] = useState({
+    date: '',
+    time: '',
+    requirements: '',
+    type: 'session',
+    status: 'محددة' as any,
+    decision: '',
+    rulingUrl: '',
+    expenses: { amount: 0, paidBy: 'lawyer' as 'lawyer' | 'client', description: '' }
+  });
 
   // Finance State
   const [isTransModalOpen, setIsTransModalOpen] = useState(false);
@@ -46,6 +57,35 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
 
   if (!currentCase) return <div className="p-8 text-center text-slate-500">القضية غير موجودة</div>;
   
+  const handleSaveNewHearing = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddHearing || !newHearingData.date) return;
+
+    onAddHearing({
+      id: Math.random().toString(36).substring(2, 9),
+      caseId: caseId,
+      date: newHearingData.date,
+      time: newHearingData.time,
+      requirements: newHearingData.requirements,
+      type: newHearingData.type as any,
+      status: newHearingData.status,
+      decision: newHearingData.decision,
+      rulingUrl: newHearingData.rulingUrl,
+      expenses: newHearingData.expenses
+    });
+
+    setIsHearingModalOpen(false);
+    setNewHearingData({ 
+      date: '', 
+      time: '', 
+      requirements: '', 
+      type: 'session',
+      status: 'محددة' as any,
+      decision: '',
+      rulingUrl: '',
+      expenses: { amount: 0, paidBy: 'lawyer' as 'lawyer' | 'client', description: '' }
+    });
+  };
   const caseHearings = hearings.filter(h => h.caseId === caseId).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const nextHearing = caseHearings.find(h => new Date(h.date) >= new Date(new Date().setHours(0,0,0,0))) || caseHearings[0];
   const client = clients.find(c => c.id === currentCase.clientId);
@@ -389,7 +429,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
               <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> سجل الجلسات
            </h3>
            <button 
-             onClick={() => onAddHearing && onAddHearing({ id: '', caseId, date: new Date().toISOString().split('T')[0], status: 'محددة' } as any)}
+             onClick={() => setIsHearingModalOpen(true)}
              className="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center gap-1"
            >
               <Plus className="w-3 h-3" /> جلسة جديدة
@@ -929,6 +969,38 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                    <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700 mt-2">
                       تحديث القيمة
                    </button>
+                </form>
+             </div>
+          </div>
+       )}
+
+       {/* Add Hearing Modal */}
+       {isHearingModalOpen && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md animate-in zoom-in-95 duration-200">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between">
+                  <h3 className="font-bold text-slate-900 dark:text-white">إضافة جلسة جديدة</h3>
+                  <button onClick={() => setIsHearingModalOpen(false)}><X className="w-5 h-5 text-slate-400 hover:text-red-500" /></button>
+                </div>
+                <form onSubmit={handleSaveNewHearing} className="p-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                     <div>
+                        <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">التاريخ</label>
+                        <input type="date" required className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newHearingData.date} onChange={e => setNewHearingData({...newHearingData, date: e.target.value})} />
+                     </div>
+                     <div>
+                        <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">الوقت</label>
+                        <input type="time" className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newHearingData.time} onChange={e => setNewHearingData({...newHearingData, time: e.target.value})} />
+                     </div>
+                  </div>
+                  <div>
+                     <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">المطلوب للجلسة</label>
+                     <textarea placeholder="المطلوب للجلسة..." className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" rows={3} value={newHearingData.requirements} onChange={e => setNewHearingData({...newHearingData, requirements: e.target.value})}></textarea>
+                  </div>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => setIsHearingModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">إلغاء</button>
+                    <button type="submit" className="flex-1 bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 transition-colors">حفظ الجلسة</button>
+                  </div>
                 </form>
              </div>
           </div>
