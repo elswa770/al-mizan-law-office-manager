@@ -113,11 +113,14 @@ export interface Opponent {
 export interface CaseDocument {
   id: string;
   name: string;
-  type: 'pdf' | 'image' | 'word' | 'other';
-  category: 'contract' | 'ruling' | 'notice' | 'minutes' | 'other';
+  type: 'pdf' | 'word' | 'excel' | 'image' | 'other';
+  category: 'contract' | 'ruling' | 'notice' | 'evidence' | 'other';
   url: string;
-  size?: string;
   uploadDate: string;
+  driveFileId?: string;
+  driveLink?: string;
+  driveContentLink?: string;
+  uploadedToDrive?: boolean;
   isOriginal?: boolean;
 }
 

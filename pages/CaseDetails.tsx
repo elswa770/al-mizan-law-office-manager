@@ -1,7 +1,8 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Case, Client, Hearing, CaseStatus, CaseDocument, FinancialTransaction, PaymentMethod } from '../types';
-import { ArrowRight, Edit3, Calendar, FileText, Briefcase, MapPin, User, Shield, Save, X, Activity, DollarSign, Clock, CheckCircle, AlertCircle, Phone, Gavel, MoreVertical, Plus, Upload, FileCheck, Eye, Trash2, Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Calculator, Edit, Users } from 'lucide-react';
+import { ArrowRight, Edit3, Calendar, FileText, Briefcase, MapPin, User, Shield, Save, X, Activity, DollarSign, Clock, CheckCircle, AlertCircle, Phone, Gavel, MoreVertical, Plus, Upload, FileCheck, Eye, Trash2, Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Calculator, Edit, Users, Cloud, Download } from 'lucide-react';
+import { googleDriveService } from '../services/googleDriveService';
 
 interface CaseDetailsProps {
   caseId: string;
@@ -32,8 +33,9 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
   const [editActionPlan, setEditActionPlan] = useState('');
 
   // Documents State
-  const [newDocData, setNewDocData] = useState<{name: string, type: string, category: string, file: File | null}>({ name: '', type: 'pdf', category: 'other', file: null });
+  const [newDocData, setNewDocData] = useState<{name: string, type: string, category: string, file: File | null, uploadToDrive: boolean}>({ name: '', type: 'pdf', category: 'other', file: null, uploadToDrive: true });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
 
   // New Hearing State
   const [newHearingData, setNewHearingData] = useState({
@@ -54,6 +56,19 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
   // Fees Edit State
   const [isFeesModalOpen, setIsFeesModalOpen] = useState(false);
   const [newFeeValue, setNewFeeValue] = useState<number>(0);
+
+  // Initialize Google Drive service
+  useEffect(() => {
+    const initGoogleDrive = async () => {
+      try {
+        await googleDriveService.initialize();
+      } catch (error) {
+        console.log('Google Drive service initialization failed:', error);
+      }
+    };
+    
+    initGoogleDrive();
+  }, []);
 
   if (!currentCase) return <div className="p-8 text-center text-slate-500">القضية غير موجودة</div>;
   
@@ -153,24 +168,93 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
     }
   };
 
-  const handleSaveDocument = (e: React.FormEvent) => {
-     e.preventDefault();
-     if (!onUpdateCase || !newDocData.file) return;
+  const handleSaveDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDocData.file || !newDocData.name) return;
 
-     const newDoc: CaseDocument = {
+    try {
+      let documentData: Partial<CaseDocument> = {
         id: Math.random().toString(36).substring(2, 9),
         name: newDocData.name,
         type: newDocData.type as any,
         category: newDocData.category as any,
-        url: URL.createObjectURL(newDocData.file),
-        uploadDate: new Date().toISOString().split('T')[0],
-        size: `${(newDocData.file.size / 1024).toFixed(1)} KB`,
-        isOriginal: false
-     };
+        url: '',
+        uploadDate: new Date().toISOString(),
+        uploadedToDrive: false
+      };
 
-     onUpdateCase({ ...currentCase, documents: [...(currentCase.documents || []), newDoc] });
-     setIsDocModalOpen(false);
-     setNewDocData({ name: '', type: 'pdf', category: 'other', file: null });
+      // إذا تم اختيار التحميل إلى Google Drive
+      if (newDocData.uploadToDrive) {
+        setIsUploadingToDrive(true);
+        
+        // التحقق من تسجيل الدخول إلى Google
+        if (!googleDriveService.isSignedIn()) {
+          await googleDriveService.signIn();
+        }
+
+        // رفع الملف إلى Google Drive
+        console.log('Starting upload to Google Drive...');
+        console.log('File:', newDocData.file);
+        console.log('Folder:', `القضية_${currentCase.caseNumber}_${currentCase.title}`);
+        
+        const driveResponse = await googleDriveService.uploadFile(
+          newDocData.file, 
+          `القضية ${currentCase.caseNumber} - ${currentCase.title}`
+        );
+        
+        console.log('Google Drive response:', driveResponse);
+
+        // تحديث البيانات بمعلومات Google Drive
+        documentData.driveFileId = driveResponse.fileId;
+        documentData.driveLink = driveResponse.webViewLink;
+        documentData.driveContentLink = driveResponse.webContentLink;
+        documentData.uploadedToDrive = true;
+        documentData.url = driveResponse.webViewLink;
+        
+        setIsUploadingToDrive(false);
+      } else {
+        // التحميل المحلي معطل مؤقتاً بسبب مشكلة CORS
+        // TODO: إصلاح مشكلة CORS في Firebase Storage
+        alert('التحميل المحلي معطل مؤقتاً. يرجى اختيار "رفع إلى Google Drive".');
+        setIsUploadingToDrive(false);
+        return;
+      }
+
+      // إضافة المستند إلى قائمة المستندات
+      const updatedDocuments = [...(currentCase.documents || []), documentData as CaseDocument];
+      onUpdateCase && onUpdateCase({
+        ...currentCase,
+        documents: updatedDocuments
+      });
+
+      // إغلاق النافذة وإعادة تعيين البيانات
+      setIsDocModalOpen(false);
+      setNewDocData({ name: '', type: 'pdf', category: 'other', file: null, uploadToDrive: true });
+      
+    } catch (error) {
+      console.error('Error saving document:', error);
+      setIsUploadingToDrive(false);
+      
+      // رسائل خطأ مفصلة
+      let errorMessage = 'حدث خطأ أثناء حفظ المستند. يرجى المحاولة مرة أخرى.';
+      
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        
+        if (error.message.includes('sign-in')) {
+          errorMessage = 'فشل تسجيل الدخول إلى Google. يرجى المحاولة مرة أخرى.';
+        } else if (error.message.includes('upload')) {
+          errorMessage = 'فشل رفع الملف إلى Google Drive. يرجى التحقق من اتصال الإنترنت وحجم الملف.';
+        } else if (error.message.includes('permission')) {
+          errorMessage = 'لا توجد صلاحية كافية للوصول إلى Google Drive. يرجى التحقق من الأذونات.';
+        } else if (error.message.includes('quota')) {
+          errorMessage = 'مساحة Google Drive ممتلئة. يرجى مسح بعض الملفات والمحاولة مرة أخرى.';
+        }
+      }
+      
+      alert(errorMessage);
+    }
   };
 
   // Finance Handlers
@@ -494,21 +578,48 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
               {currentCase.documents.map(doc => (
                  <div key={doc.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all group relative">
                     <div className="flex items-start gap-3">
-                       <div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900/30 transition-colors">
+                       <div className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900/30 transition-colors relative">
                           {getFileIcon(doc.type)}
+                          {doc.uploadedToDrive && (
+                            <Cloud className="absolute -top-1 -right-1 w-4 h-4 text-blue-600 dark:text-blue-400 bg-white dark:bg-slate-800 rounded-full" />
+                          )}
                        </div>
                        <div className="flex-1 min-w-0">
                           <h4 className="font-bold text-slate-800 dark:text-white text-sm truncate mb-1" title={doc.name}>{doc.name}</h4>
                           <span className="text-[10px] bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-300 px-2 py-0.5 rounded">
-                             {doc.category === 'contract' ? 'عقد' : doc.category === 'ruling' ? 'حكم' : doc.category === 'notice' ? 'إعلان' : 'عام'}
+                             {doc.category === 'contract' ? 'عقد' : doc.category === 'ruling' ? 'حكم' : doc.category === 'notice' ? 'إعلان' : doc.category === 'evidence' ? 'أدلة' : 'عام'}
                           </span>
+                          {doc.uploadedToDrive && (
+                            <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded mr-1">
+                               Google Drive
+                            </span>
+                          )}
                        </div>
                     </div>
                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center text-xs text-slate-400">
                        <span>{doc.uploadDate}</span>
-                       <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-bold hover:underline">
-                          <Eye className="w-3 h-3" /> معاينة
-                       </a>
+                       <div className="flex gap-2">
+                         {doc.uploadedToDrive && doc.driveContentLink && (
+                           <a 
+                             href={doc.driveContentLink} 
+                             target="_blank" 
+                             rel="noopener noreferrer" 
+                             className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold hover:underline"
+                             title="تحميل من Google Drive"
+                           >
+                              <Download className="w-3 h-3" /> تحميل
+                           </a>
+                         )}
+                         <a 
+                           href={doc.url} 
+                           target="_blank" 
+                           rel="noopener noreferrer" 
+                           className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
+                           title={doc.uploadedToDrive ? "معاينة في Google Drive" : "معاينة المستند"}
+                         >
+                              <Eye className="w-3 h-3" /> معاينة
+                         </a>
+                       </div>
                     </div>
                  </div>
               ))}
@@ -887,8 +998,27 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                          <option value="contract">عقد</option>
                          <option value="ruling">حكم</option>
                          <option value="notice">إعلان/إنذار</option>
-                         <option value="minutes">محضر</option>
+                         <option value="evidence">أدلة</option>
                       </select>
+                   </div>
+
+                   {/* Google Drive Upload Option */}
+                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                         <input 
+                           type="checkbox" 
+                           checked={newDocData.uploadToDrive}
+                           onChange={e => setNewDocData({...newDocData, uploadToDrive: e.target.checked})}
+                           className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                         />
+                         <Cloud className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                         <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                           رفع إلى Google Drive (موصى به)
+                         </span>
+                      </label>
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 mr-6">
+                         حفظ آمن في Google Drive للوصول من أي جهاز
+                      </p>
                    </div>
                    
                    <div 
@@ -909,8 +1039,18 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                       )}
                    </div>
 
-                   <button type="submit" disabled={!newDocData.file || !newDocData.name} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed mt-2">
-                      حفظ المستند
+                   <button type="submit" disabled={!newDocData.file || !newDocData.name || isUploadingToDrive} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed mt-2 flex items-center justify-center gap-2">
+                      {isUploadingToDrive ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          جاري الرفع إلى Google Drive...
+                        </>
+                      ) : (
+                        <>
+                          {newDocData.uploadToDrive ? <Cloud className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                          حفظ المستند
+                        </>
+                      )}
                    </button>
                 </form>
              </div>
