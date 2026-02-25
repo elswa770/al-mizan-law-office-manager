@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { PenTool, FileText, Download, Printer, User, Briefcase, ChevronDown, Check, RefreshCw, Upload, Plus } from 'lucide-react';
+import { PenTool, FileText, Download, Printer, User, Briefcase, ChevronDown, Check, RefreshCw, Upload, Plus, Trash2 } from 'lucide-react';
 import { Case, Client } from '../types';
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
@@ -46,6 +46,144 @@ const DEFAULT_TEMPLATES: Template[] = [
       <div style="display: flex; justify-content: space-between; margin-top: 50px;">
         <div style="text-align: center;"><strong>الطرف الأول (المؤجر)</strong><br/><br/>...................</div>
         <div style="text-align: center;"><strong>الطرف الثاني (المستأجر)</strong><br/><br/>...................</div>
+      </div>
+    `
+  },
+  {
+    id: 'marriage_contract',
+    title: 'عقد زواج',
+    type: 'contract',
+    placeholders: ['DATE', 'HUSBAND_NAME', 'HUSBAND_ID', 'HUSBAND_ADDRESS', 'HUSBAND_JOB', 'WIFE_NAME', 'WIFE_ID', 'WIFE_ADDRESS', 'WIFE_JOB', 'WALI_NAME', 'WALI_RELATION', 'WALI_ID', 'MAHR_AMOUNT', 'MAHR_PAID', 'WITNESS1_NAME', 'WITNESS1_ID', 'WITNESS2_NAME', 'WITNESS2_ID'],
+    content: `
+      <h2 style="text-align: center; margin-bottom: 20px; text-decoration: underline;">عقد زواج شرعي</h2>
+      <p>إنه في يوم الموافق: <strong>{{DATE}}</strong></p>
+      <p>تم عقد الزواج الشرعي بين كل من:</p>
+      <p><strong>الزوج:</strong> السيد/ {{HUSBAND_NAME}} - الجنسية: مصري - الديانة: مسلم</p>
+      <p>المقيم في: {{HUSBAND_ADDRESS}} - ويحمل رقم قومي: {{HUSBAND_ID}}</p>
+      <p>يعمل: {{HUSBAND_JOB}}</p>
+      <br/>
+      <p><strong>الزوجة:</strong> السيدة/ {{WIFE_NAME}} - الجنسية: مصرية - الديانة: مسلمة</p>
+      <p>المقيمة في: {{WIFE_ADDRESS}} - وتحمل رقم قومي: {{WIFE_ID}}</p>
+      <p>تعمل: {{WIFE_JOB}}</p>
+      <br/>
+      <p><strong>ولي الأمر:</strong> السيد/ {{WALI_NAME}} ({{WALI_RELATION}}) - يحمل رقم قومي: {{WALI_ID}}</p>
+      <br/>
+      <h3 style="text-align: center;">شروط العقد</h3>
+      <p><strong>أولاً:</strong> الصداق (المهر) المحدد بين الطرفين هو مبلغ <strong>{{MAHR_AMOUNT}} جنيه مصري</strong>.</p>
+      <p><strong>ثانياً:</strong> تم دفع مبلغ <strong>{{MAHR_PAID}} جنيه مصري</strong> مقدماً كصداق معجل، والباقي مؤجل.</p>
+      <p><strong>ثالثاً:</strong> الزوجة تقر برضاها التام بالزواج من الزوج المذكور أعلاه.</p>
+      <p><strong>رابعاً:</strong> الزوج يقر برضاه التام بالزواج من الزوجة المذكورة أعلاه.</p>
+      <br/>
+      <h3 style="text-align: center;">الشهود</h3>
+      <p><strong>الشاهد الأول:</strong> {{WITNESS1_NAME}} - رقم قومي: {{WITNESS1_ID}}</p>
+      <p><strong>الشاهد الثاني:</strong> {{WITNESS2_NAME}} - رقم قومي: {{WITNESS2_ID}}</p>
+      <br/><br/>
+      <div style="display: flex; justify-content: space-between; margin-top: 50px;">
+        <div style="text-align: center;"><strong>الزوج</strong><br/><br/>...................</div>
+        <div style="text-align: center;"><strong>الزوجة</strong><br/><br/>...................</div>
+        <div style="text-align: center;"><strong>ولي الأمر</strong><br/><br/>...................</div>
+      </div>
+    `
+  },
+  {
+    id: 'general_agency',
+    title: 'وكالة عامة',
+    type: 'poa',
+    placeholders: ['DATE', 'PRINCIPAL_NAME', 'PRINCIPAL_ID', 'PRINCIPAL_ADDRESS', 'AGENT_NAME', 'AGENT_ID', 'AGENT_ADDRESS', 'AGENCY_SCOPE'],
+    content: `
+      <h2 style="text-align: center; margin-bottom: 20px;">وكالة عامة</h2>
+      <p>إنه في يوم الموافق: <strong>{{DATE}}</strong></p>
+      <p>أنا الموقع أدناه:</p>
+      <p><strong>الاسم:</strong> {{PRINCIPAL_NAME}}</p>
+      <p><strong>الرقم القومي:</strong> {{PRINCIPAL_ID}}</p>
+      <p><strong>العنوان:</strong> {{PRINCIPAL_ADDRESS}}</p>
+      <br/>
+      <p>أقر وأنا بكامل أهليتي القانونية بأنني قد وكلت:</p>
+      <p><strong>السيد/ {{AGENT_NAME}}</strong></p>
+      <p>الرقم القومي: {{AGENT_ID}}</p>
+      <p>العنوان: {{AGENT_ADDRESS}}</p>
+      <br/>
+      <p><strong>وكالة عامة في:</strong> {{AGENCY_SCOPE}}</p>
+      <br/>
+      <p>للقيام بالأعمال التالية نيابة عني:</p>
+      <ol style="margin-right: 20px;">
+        <li>البيع والشراء والرهن والتنازل عن العقارات والأراضي</li>
+        <li>استلام وتسليم المستندات الرسمية</li>
+        <li>التوقيع على العقود والمحررات الرسمية</li>
+        <li>الخصومة والمرافعة أمام جميع المحاكم</li>
+        <li>الصلح والتصالح والتحكيم</li>
+        <li>استلام الأموال والديون</li>
+      </ol>
+      <p>هذه الوكالة صالحة لمدة سنة من تاريخها وتجدد تلقائياً ما لم يتم إلغاؤها.</p>
+      <br/><br/>
+      <div style="text-align: center;">
+        <p><strong>توقيع الموكل:</strong></p>
+        <p>.......................</p>
+      </div>
+    `
+  },
+  {
+    id: 'debt_acknowledgment',
+    title: 'إقرار دين',
+    type: 'other',
+    placeholders: ['DATE', 'DEBTOR_NAME', 'DEBTOR_ID', 'DEBTOR_ADDRESS', 'CREDITOR_NAME', 'CREDITOR_ID', 'CREDITOR_ADDRESS', 'DEBT_AMOUNT', 'DEBT_REASON', 'REPAYMENT_DATE', 'PAYMENT_METHOD'],
+    content: `
+      <h2 style="text-align: center; margin-bottom: 20px;">إقرار دين</h2>
+      <p>إنه في يوم الموافق: <strong>{{DATE}}</strong></p>
+      <p>أنا الموقع أدناه:</p>
+      <p><strong>الاسم:</strong> {{DEBTOR_NAME}}</p>
+      <p><strong>الرقم القومي:</strong> {{DEBTOR_ID}}</p>
+      <p><strong>العنوان:</strong> {{DEBTOR_ADDRESS}}</p>
+      <br/>
+      <p>أقر وأنا بكامل إرادتي وقبولي التام بأنني مدين للسيد/ة:</p>
+      <p><strong>الدائن:</strong> {{CREDITOR_NAME}}</p>
+      <p>الرقم القومي: {{CREDITOR_ID}}</p>
+      <p>العنوان: {{CREDITOR_ADDRESS}}</p>
+      <br/>
+      <p><strong>مبلغ الدين:</strong> {{DEBT_AMOUNT}} جنيه مصري فقط لا غير</p>
+      <p><strong>سبب الدين:</strong> {{DEBT_REASON}}</p>
+      <br/>
+      <p>أتعهد بسداد هذا الدين في موعد أقصاه: <strong>{{REPAYMENT_DATE}}</strong></p>
+      <p><strong>طريقة السداد:</strong> {{PAYMENT_METHOD}}</p>
+      <br/>
+      <p>أقر بأن هذا الدين صحيح ومستحق ولا شبهة فيه، وأتعهد بسداده كاملاً في الموعد المحدد.</p>
+      <p>في حالة التأخير في السداد، أقبل دفع الفوائد القانونية وتكاليف التقاضي.</p>
+      <br/><br/>
+      <div style="display: flex; justify-content: space-between; margin-top: 50px;">
+        <div style="text-align: center;"><strong>المدين</strong><br/><br/>...................</div>
+        <div style="text-align: center;"><strong>الدائن</strong><br/><br/>...................</div>
+        <div style="text-align: center;"><strong>شاهد</strong><br/><br/>...................</div>
+      </div>
+    `
+  },
+  {
+    id: 'partnership_contract',
+    title: 'عقد شراكة',
+    type: 'contract',
+    placeholders: ['DATE', 'PARTNER1_NAME', 'PARTNER1_ID', 'PARTNER1_ADDRESS', 'PARTNER1_CONTRIBUTION', 'PARTNER2_NAME', 'PARTNER2_ID', 'PARTNER2_ADDRESS', 'PARTNER2_CONTRIBUTION', 'COMPANY_NAME', 'COMPANY_ACTIVITY', 'PROFIT_SHARING', 'LOSS_SHARING', 'CONTRACT_DURATION'],
+    content: `
+      <h2 style="text-align: center; margin-bottom: 20px; text-decoration: underline;">عقد شراكة</h2>
+      <p>إنه في يوم الموافق: <strong>{{DATE}}</strong></p>
+      <p>تحرر هذا العقد بين كل من:</p>
+      <p><strong>الشريك الأول:</strong> {{PARTNER1_NAME}} - رقم قومي: {{PARTNER1_ID}}</p>
+      <p>العنوان: {{PARTNER1_ADDRESS}} - مساهمته: {{PARTNER1_CONTRIBUTION}} جنيه</p>
+      <br/>
+      <p><strong>الشريك الثاني:</strong> {{PARTNER2_NAME}} - رقم قومي: {{PARTNER2_ID}}</p>
+      <p>العنوان: {{PARTNER2_ADDRESS}} - مساهمته: {{PARTNER2_CONTRIBUTION}} جنيه</p>
+      <br/>
+      <h3 style="text-align: center;">بنود العقد</h3>
+      <p><strong>البند الأول:</strong> اتفق الطرفان على تأسيس شركة باسم "{{COMPANY_NAME}}" لمزاولة نشاط {{COMPANY_ACTIVITY}}.</p>
+      <p><strong>البند الثاني:</strong> رأس المال الإجمالي للشركة هو {{PARTNER1_CONTRIBUTION}} + {{PARTNER2_CONTRIBUTION}} جنيه مصري.</p>
+      <p><strong>البند الثالث:</strong> توزيع الأرباح يكون بنسبة {{PROFIT_SHARING}} لكل شريك.</p>
+      <p><strong>البند الرابع:</strong> توزيع الخسائر يكون بنسبة {{LOSS_SHARING}} لكل شريك.</p>
+      <p><strong>البند الخامس:</strong> مدة هذا العقد هي {{CONTRACT_DURATION}} تبدأ من تاريخ التوقيع.</p>
+      <p><strong>البند السادس:</strong> إدارة الشركة تكون مشتركة بين الطرفين، وتتطلب قرارات هامة موافقة الطرفين.</p>
+      <p><strong>البند السابع:</strong> لا يجوز لأي شريك الانسحاب من الشراكة إلا بموافقة الطرف الآخر كتابياً.</p>
+      <p><strong>البند الثامن:</strong> تختص محكمة التجارة بالنظر في أي نزاع ينشأ عن هذا العقد.</p>
+      <br/><br/>
+      <div style="display: flex; justify-content: space-between; margin-top: 50px;">
+        <div style="text-align: center;"><strong>الشريك الأول</strong><br/><br/>...................</div>
+        <div style="text-align: center;"><strong>الشريك الثاني</strong><br/><br/>...................</div>
       </div>
     `
   },
@@ -182,7 +320,11 @@ const DEFAULT_TEMPLATES: Template[] = [
 
 const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients }) => {
   // State for Custom Templates (Imported)
-  const [customTemplates, setCustomTemplates] = useState<Template[]>([]);
+  const [customTemplates, setCustomTemplates] = useState<Template[]>(() => {
+    // Load custom templates from localStorage on initial render
+    const saved = localStorage.getItem('customDocumentTemplates');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(DEFAULT_TEMPLATES[0].id);
   const [selectedContext, setSelectedContext] = useState<{type: 'client' | 'case', id: string} | null>(null);
   
@@ -263,19 +405,73 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
     setPreviewContent(html);
   }, [formData, selectedTemplateId, allTemplates]);
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      // Close any open modals or reset forms
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+    if (e.ctrlKey && e.key === 'p') {
+      e.preventDefault();
+      handlePrint();
+    }
+    if (e.ctrlKey && e.key === 's') {
+      e.preventDefault();
+      handleDownloadWord();
+    }
+  };
+
+  const saveCustomTemplate = (template: Template) => {
+    const updatedTemplates = [...customTemplates, template];
+    setCustomTemplates(updatedTemplates);
+    localStorage.setItem('customDocumentTemplates', JSON.stringify(updatedTemplates));
+  };
+
+  const deleteCustomTemplate = (templateId: string) => {
+    const updatedTemplates = customTemplates.filter(t => t.id !== templateId);
+    setCustomTemplates(updatedTemplates);
+    localStorage.setItem('customDocumentTemplates', JSON.stringify(updatedTemplates));
+    // Reset to default template if current template was deleted
+    if (selectedTemplateId === templateId) {
+      setSelectedTemplateId(DEFAULT_TEMPLATES[0].id);
+    }
+  };
+
   const handleInputChange = (key: string, value: string) => {
      setFormData(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleImportWord = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const SUPPORTED_FORMATS = ['.docx', '.doc', '.html', '.htm', '.rtf'];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+    
+    if (!SUPPORTED_FORMATS.includes(fileExtension)) {
+      alert(`الصيغ المدعومة: ${SUPPORTED_FORMATS.join(', ')}`);
+      return;
+    }
+
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      // Convert Word to HTML
-      const result = await mammoth.convertToHtml({ arrayBuffer });
-      const html = result.value;
+      let html = '';
+      
+      if (fileExtension === '.docx') {
+        // Convert Word to HTML
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        html = result.value;
+      } else if (fileExtension === '.doc') {
+        // For old .doc files, we need to show a message about conversion
+        alert(`ملفات .doc القديمة غير مدعومة مباشرة. يرجى تحويل الملف إلى .docx أو استخدام محول عبر الإنترنت ثم استيراده.`);
+        return;
+      } else if (fileExtension === '.html' || fileExtension === '.htm') {
+        // Read HTML directly
+        html = await file.text();
+      } else if (fileExtension === '.rtf') {
+        // Convert RTF to HTML (basic implementation)
+        const text = await file.text();
+        html = text.replace(/\{\\[^}]+\}/g, '').replace(/\\par/g, '<br>').replace(/\\b0/g, '').replace(/\\b/g, '<strong>').replace(/\\b0/g, '</strong>');
+      }
 
       // Extract placeholders {{KEY}}
       const matches: string[] = html.match(/{{(.*?)}}/g) || [];
@@ -284,19 +480,29 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
 
       const newTemplate: Template = {
         id: `custom_${Date.now()}`,
-        title: file.name.replace('.docx', ''),
+        title: file.name.replace(/\.[^/.]+$/, ''),
         type: 'other',
         content: html,
         placeholders: placeholders
       };
 
-      setCustomTemplates(prev => [...prev, newTemplate]);
+      saveCustomTemplate(newTemplate);
       setSelectedTemplateId(newTemplate.id);
-      alert('تم استيراد النموذج بنجاح! يمكنك الآن ملء البيانات.');
+      alert(`تم استيراد "${file.name}" بنجاح! يمكنك الآن ملء البيانات.\n\nتم العثور على ${placeholders.length} متغيرات للملء.`);
 
     } catch (error) {
-      console.error("Error importing docx:", error);
-      alert('حدث خطأ أثناء قراءة ملف Word. تأكد أنه ملف .docx صالح.');
+      console.error("Error importing file:", error);
+      let errorMessage = `حدث خطأ أثناء قراءة ملف "${file.name}".`;
+      
+      if (fileExtension === '.doc') {
+        errorMessage += '\n\nملفات .doc القديمة تتطلب تحويل إلى .docx أولاً.';
+      } else if (fileExtension === '.docx') {
+        errorMessage += '\n\nتأكد من أن ملف Word غير تالف وليس محمياً بكلمة مرور.';
+      } else {
+        errorMessage += '\n\nتأكد من أن الملف صالح وغير تالف.';
+      }
+      
+      alert(errorMessage);
     } finally {
       if (importInputRef.current) importInputRef.current.value = '';
     }
@@ -342,6 +548,8 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
   const handleDownloadWord = () => {
      if (!previewContent) return;
      
+     const template = allTemplates.find(t => t.id === selectedTemplateId);
+     
      const header = `
        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
              xmlns:w='urn:schemas-microsoft-com:office:word' 
@@ -365,7 +573,7 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
      const url = URL.createObjectURL(blob);
      const link = document.createElement('a');
      link.href = url;
-     link.download = `${currentTemplate?.title || 'document'}.doc`;
+     link.download = `${template?.title || 'document'}.doc`;
      document.body.appendChild(link);
      link.click();
      document.body.removeChild(link);
@@ -375,7 +583,7 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
   const currentTemplate = allTemplates.find(t => t.id === selectedTemplateId);
 
   return (
-    <div className="space-y-6 pb-20 animate-in fade-in h-[calc(100vh-140px)] flex flex-col">
+    <div className="space-y-6 pb-20 animate-in fade-in h-[calc(100vh-140px)] flex flex-col" onKeyDown={handleKeyDown}>
        
        {/* 1. Header */}
        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
@@ -390,13 +598,28 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
           </div>
           
           <div className="flex gap-2">
-             <button onClick={handleDownloadWord} className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors">
+             <button 
+               onClick={handleDownloadWord} 
+               className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+               aria-label="تحميل المستند بصيغة Word"
+               title="تحميل بصيغة Word (Ctrl+S)"
+             >
                 <FileText className="w-4 h-4 text-blue-600" /> Word
              </button>
-             <button onClick={handleDownloadPDF} className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors">
+             <button 
+               onClick={handleDownloadPDF} 
+               className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors"
+               aria-label="تحميل المستند بصيغة PDF"
+               title="تحميل بصيغة PDF"
+             >
                 <Download className="w-4 h-4" /> PDF
              </button>
-             <button onClick={handlePrint} className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-primary-700 transition-colors shadow-sm">
+             <button 
+               onClick={handlePrint} 
+               className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-primary-700 transition-colors shadow-sm"
+               aria-label="طباعة المستند"
+               title="طباعة (Ctrl+P)"
+             >
                 <Printer className="w-4 h-4" /> طباعة
              </button>
           </div>
@@ -417,12 +640,30 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
                    </optgroup>
                    {customTemplates.length > 0 && (
                       <optgroup label="نماذج مستوردة">
-                         {customTemplates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                         {customTemplates.map(t => (
+                           <option key={t.id} value={t.id}>
+                              {t.title}
+                           </option>
+                         ))}
                       </optgroup>
                    )}
                 </select>
                 <ChevronDown className="absolute left-3 top-2.5 w-5 h-5 text-slate-400 pointer-events-none" />
              </div>
+             {customTemplates.find(t => t.id === selectedTemplateId) && (
+                <button
+                  onClick={() => {
+                    if (confirm('هل أنت متأكد من حذف هذا النموذج؟')) {
+                      deleteCustomTemplate(selectedTemplateId);
+                    }
+                  }}
+                  className="absolute top-6 left-2 text-red-500 hover:text-red-700 transition-colors"
+                  title="حذف النموذج المخصص"
+                  aria-label="حذف النموذج المخصص"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+             )}
           </div>
 
           <div className="flex-1 w-full">
@@ -450,13 +691,13 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
 
           {/* Import Button */}
           <div>
-             <input type="file" ref={importInputRef} accept=".docx" className="hidden" onChange={handleImportWord} />
+             <input type="file" ref={importInputRef} accept=".docx,.doc,.html,.htm,.rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword" className="hidden" onChange={handleImportFile} />
              <button 
                onClick={() => importInputRef.current?.click()}
                className="h-[42px] px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors whitespace-nowrap"
-               title="استيراد ملف Word (.docx) وتحديد المتغيرات تلقائياً {{KEY}}"
+               title="استيراد ملفات (Word .docx, HTML, RTF) وتحديد المتغيرات تلقائياً {{KEY}}"
              >
-                <Upload className="w-4 h-4" /> استيراد Word
+                <Upload className="w-4 h-4" /> استيراد ملف
              </button>
           </div>
        </div>
@@ -480,6 +721,19 @@ const DocumentGenerator: React.FC<DocumentGeneratorProps> = ({ cases, clients })
              </div>
              
              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {/* Help Section */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                  <h4 className="font-bold text-blue-800 dark:text-blue-200 text-sm mb-2 flex items-center gap-2">
+                    <Check className="w-4 h-4" /> كيفية الاستخدام
+                  </h4>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                    في ملف Word، استخدم الصيغة: <span className="bg-blue-100 dark:bg-blue-800 px-1 rounded font-mono">{'{{KEY_NAME}}'}</span>
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                    مثال: <span className="bg-blue-100 dark:bg-blue-800 px-1 rounded font-mono">{'{{CLIENT_NAME}}'}</span> سيظهر كحقل إدخال
+                  </p>
+                </div>
+
                 {currentTemplate?.placeholders && currentTemplate.placeholders.length > 0 ? (
                    currentTemplate.placeholders.map(field => (
                       <div key={field}>
