@@ -336,9 +336,13 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                    <span className="text-slate-500 dark:text-slate-400">الدائرة</span>
                    <span className="font-medium text-slate-800 dark:text-white">{currentCase.circle || '-'}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm">
+                <div className="flex justify-between items-center text-sm border-b border-dashed border-slate-200 dark:border-slate-700 pb-2">
                    <span className="text-slate-500 dark:text-slate-400">القاضي</span>
                    <span className="font-medium text-slate-800 dark:text-white">{currentCase.judgeName || '-'}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                   <span className="text-slate-500 dark:text-slate-400">المحامي المسؤول</span>
+                   <span className="font-medium text-slate-800 dark:text-white">{currentCase.assignedLawyerId || 'غير معين'}</span>
                 </div>
              </div>
           </div>
@@ -693,6 +697,16 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                        <select value={editCaseData.status} onChange={e => setEditCaseData({...editCaseData, status: e.target.value as CaseStatus})} className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
                           {Object.values(CaseStatus).map(s => <option key={s} value={s}>{s}</option>)}
                        </select>
+                    </div>
+                    <div>
+                       <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">المحامي المسؤول</label>
+                       <input 
+                          type="text" 
+                          value={editCaseData.assignedLawyerId || ''} 
+                          onChange={e => setEditCaseData({...editCaseData, assignedLawyerId: e.target.value})} 
+                          className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                          placeholder="اكتب اسم المحامي المسؤول..."
+                       />
                     </div>
 
                     {/* Opponent Editing Fields */}

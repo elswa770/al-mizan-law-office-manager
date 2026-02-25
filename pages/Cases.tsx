@@ -109,6 +109,19 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
     return user ? user.name : 'غير معروف';
   };
 
+  const getCaseTypeArabic = (type?: string) => {
+    switch (type) {
+      case 'civil': return 'مدني';
+      case 'criminal': return 'جنائي';
+      case 'family': return 'أسرة';
+      case 'administrative': return 'مجلس دولة';
+      case 'labor': return 'عمالي';
+      case 'commercial': return 'تجاري';
+      case 'other': return 'أخرى';
+      default: return type || '-';
+    }
+  };
+
   const renderGridView = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in">
       {filteredCases.map(c => {
@@ -155,7 +168,7 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
                 {c.caseType && (
                    <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                       <Scale className="w-3 h-3 text-indigo-500" />
-                      <span className="truncate capitalize">{c.caseType}</span>
+                      <span className="truncate">{getCaseTypeArabic(c.caseType)}</span>
                    </div>
                 )}
                 {c.assignedLawyerId && (
@@ -226,7 +239,7 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
                 <td className="p-4">
                    <div className="flex flex-col gap-0.5">
                       <span className="text-sm font-medium">{c.court}</span>
-                      {c.caseType && <span className="text-xs text-indigo-600 dark:text-indigo-400 capitalize">{c.caseType}</span>}
+                      {c.caseType && <span className="text-xs text-indigo-600 dark:text-indigo-400">{getCaseTypeArabic(c.caseType)}</span>}
                       {c.courtBranch && <span className="text-[10px] text-slate-400">{c.courtBranch}</span>}
                    </div>
                 </td>
