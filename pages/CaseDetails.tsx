@@ -25,6 +25,11 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
   // Opponent Edit State (Simulate primary opponent editing)
   const [editOpponentName, setEditOpponentName] = useState('');
   const [editOpponentLawyer, setEditOpponentLawyer] = useState('');
+  
+  // Strategy Edit State
+  const [editStrengthPoints, setEditStrengthPoints] = useState('');
+  const [editWeaknessPoints, setEditWeaknessPoints] = useState('');
+  const [editActionPlan, setEditActionPlan] = useState('');
 
   // Documents State
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
@@ -61,6 +66,12 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
     const primaryOpponent = currentCase.opponents && currentCase.opponents.length > 0 ? currentCase.opponents[0] : null;
     setEditOpponentName(primaryOpponent?.name || '');
     setEditOpponentLawyer(primaryOpponent?.lawyer || '');
+    
+    // Load existing strategy data if any
+    setEditStrengthPoints(currentCase.strategy?.strengthPoints || '');
+    setEditWeaknessPoints(currentCase.strategy?.weaknessPoints || '');
+    setEditActionPlan(currentCase.strategy?.plan || '');
+    
     setIsEditModalOpen(true);
   };
 
@@ -72,10 +83,18 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
          ? [{ name: editOpponentName, role: 'خصم', lawyer: editOpponentLawyer }] 
          : [];
 
+       // Update strategy
+       const updatedStrategy = {
+         strengthPoints: editStrengthPoints,
+         weaknessPoints: editWeaknessPoints,
+         plan: editActionPlan
+       };
+
        onUpdateCase({ 
          ...currentCase, 
          ...editCaseData, 
-         opponents: updatedOpponents 
+         opponents: updatedOpponents,
+         strategy: updatedStrategy
        } as Case);
        setIsEditModalOpen(false);
     }
@@ -221,9 +240,18 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
 
           {/* Strategy / Description Card */}
           <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-             <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-3">
-                <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                ملخص واستراتيجية القضية
+             <h3 className="font-bold text-slate-800 dark:text-white mb-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+                <div className="flex items-center gap-2">
+                  <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                  ملخص واستراتيجية القضية
+                </div>
+                <button 
+                  onClick={handleEditOpen} 
+                  className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700"
+                  title="تعديل الاستراتيجية"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
              </h3>
              <div className="space-y-4">
                 <div>
@@ -242,6 +270,10 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                       <div>
                          <span className="text-xs font-bold text-red-500 dark:text-red-400 block mb-1 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> الثغرات / نقاط الضعف</span>
                          <p className="text-xs text-slate-600 dark:text-slate-400">{currentCase.strategy.weaknessPoints || '-'}</p>
+                      </div>
+                      <div>
+                         <span className="text-xs font-bold text-amber-600 dark:text-amber-400 block mb-1 flex items-center gap-1"><Activity className="w-3 h-3"/> خطة العمل</span>
+                         <p className="text-xs text-slate-600 dark:text-slate-400">{currentCase.strategy.plan || '-'}</p>
                       </div>
                    </div>
                 )}
@@ -731,6 +763,46 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                                 onChange={e => setEditOpponentLawyer(e.target.value)} 
                                 className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
                                 placeholder="اسم المحامي..."
+                             />
+                          </div>
+                       </div>
+                    </div>
+
+                    {/* Strategy Editing Fields */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700">
+                       <h4 className="font-bold text-slate-800 dark:text-white mb-4 text-sm flex items-center gap-2">
+                          <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          استراتيجية القضية
+                       </h4>
+                       <div className="space-y-4">
+                          <div>
+                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">نقاط القوة</label>
+                             <textarea 
+                                value={editStrengthPoints} 
+                                onChange={e => setEditStrengthPoints(e.target.value)} 
+                                rows={3} 
+                                className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                placeholder="سجل الأدلة والمواقف القانونية الداعمة..."
+                             />
+                          </div>
+                          <div>
+                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">نقاط الضعف / الثغرات</label>
+                             <textarea 
+                                value={editWeaknessPoints} 
+                                onChange={e => setEditWeaknessPoints(e.target.value)} 
+                                rows={3} 
+                                className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                placeholder="حدد المخاطر المحتملة..."
+                             />
+                          </div>
+                          <div>
+                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">خطة العمل</label>
+                             <textarea 
+                                value={editActionPlan} 
+                                onChange={e => setEditActionPlan(e.target.value)} 
+                                rows={3} 
+                                className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                placeholder="ارسم مسار سير الدعوى والإجراءات المطلوبة..."
                              />
                           </div>
                        </div>
