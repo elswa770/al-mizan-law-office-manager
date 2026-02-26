@@ -33,6 +33,16 @@ class GoogleDriveService {
   // تهيئة Google APIs
   async initialize(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // التحقق من وجود gapi مسبقاً
+      if (window.gapi && window.gapi.client) {
+        console.log('Google API already initialized');
+        this.gapiInited = true;
+        this.gisInited = true;
+        this.restoreToken(); // استعادة الـ token
+        this.checkReady(resolve, reject);
+        return;
+      }
+
       // تحميل Google APIs
       const script = document.createElement('script');
       script.src = 'https://apis.google.com/js/api.js';
@@ -41,6 +51,12 @@ class GoogleDriveService {
         window.gapi.load('client', async () => {
           try {
             console.log('Initializing Google API client...');
+            
+            // التحقق من وجود gapi.client قبل التهيئة
+            if (!window.gapi.client) {
+              throw new Error('Google API client not available');
+            }
+            
             await window.gapi.client.init({
               apiKey: this.config.apiKey,
               discoveryDocs: this.config.discoveryDocs,
@@ -50,10 +66,13 @@ class GoogleDriveService {
             console.log('Available APIs:', Object.keys(window.gapi.client));
             
             this.gapiInited = true;
+            this.restoreToken(); // استعادة الـ token بعد التهيئة
             this.checkReady(resolve, reject);
           } catch (error) {
             console.error('Error initializing Google API client:', error);
-            reject(error);
+            // لا نمنع التشغيل حتى لو فشلت التهيئة
+            this.gapiInited = true;
+            this.checkReady(resolve, reject);
           }
         });
       };
@@ -96,6 +115,40 @@ class GoogleDriveService {
     }
   }
 
+  // حفظ الـ token في localStorage
+  private saveToken(token: any): void {
+    try {
+      localStorage.setItem('google_drive_token', JSON.stringify(token));
+      console.log('✅ Token saved to localStorage');
+    } catch (error) {
+      console.error('❌ Failed to save token to localStorage:', error);
+    }
+  }
+
+  // استعادة الـ token من localStorage
+  private restoreToken(): void {
+    try {
+      const savedToken = localStorage.getItem('google_drive_token');
+      if (savedToken) {
+        const token = JSON.parse(savedToken);
+        window.gapi.client.setToken(token);
+        console.log('✅ Token restored from localStorage');
+      }
+    } catch (error) {
+      console.error('❌ Failed to restore token from localStorage:', error);
+    }
+  }
+
+  // مسح الـ token من localStorage
+  private clearToken(): void {
+    try {
+      localStorage.removeItem('google_drive_token');
+      console.log('✅ Token cleared from localStorage');
+    } catch (error) {
+      console.error('❌ Failed to clear token from localStorage:', error);
+    }
+  }
+
   // تسجيل الدخول والحصول على رمز الوصول
   async signIn(): Promise<void> {
     if (!this.tokenClient) {
@@ -106,6 +159,8 @@ class GoogleDriveService {
       this.tokenClient.callback = (tokenResponse: any) => {
         if (tokenResponse && tokenResponse.access_token) {
           window.gapi.client.setToken(tokenResponse);
+          this.saveToken(tokenResponse); // ✅ حفظ الـ token
+          console.log('✅ Sign-in successful, token saved');
           resolve();
         } else {
           reject(new Error('Failed to get access token'));
@@ -376,13 +431,36 @@ class GoogleDriveService {
 
   // التحقق من تسجيل الدخول
   isSignedIn(): boolean {
-    return !!window.gapi?.client?.getToken()?.access_token;
+    // التحقق من الـ token في الذاكرة أولاً
+    const currentToken = window.gapi?.client?.getToken()?.access_token;
+    if (currentToken) {
+      return true;
+    }
+    
+    // إذا لم يوجد في الذاكرة، حاول استعادته من localStorage
+    try {
+      const savedToken = localStorage.getItem('google_drive_token');
+      if (savedToken) {
+        const token = JSON.parse(savedToken);
+        if (token.access_token) {
+          window.gapi.client.setToken(token);
+          console.log('✅ Token restored from localStorage during check');
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to check saved token:', error);
+    }
+    
+    return false;
   }
 
   // تسجيل الخروج
   signOut(): void {
     if (window.gapi?.client?.getToken()) {
       window.gapi.client.setToken(null);
+      this.clearToken(); // ✅ مسح الـ token من localStorage
+      console.log('✅ Sign-out successful, token cleared');
     }
   }
 }
