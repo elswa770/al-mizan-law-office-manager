@@ -87,16 +87,20 @@ class GoogleDriveService {
       gisScript.src = 'https://accounts.google.com/gsi/client';
       gisScript.onload = () => {
         console.log('Google Identity Services loaded');
-        this.tokenClient = window.google.accounts.oauth2.initTokenClient({
+        this.tokenClient = google.accounts.oauth2.initTokenClient({
           client_id: this.config.clientId,
           scope: this.config.scope,
-          redirect_uri: window.location.origin,
           callback: (tokenResponse: any) => {
             if (tokenResponse && tokenResponse.access_token) {
               window.gapi.client.setToken(tokenResponse);
+              this.saveToken(tokenResponse);
               this.checkReady(resolve, reject);
             }
           },
+          error_callback: (error: any) => {
+            console.error('Google Identity Services error:', error);
+            reject(error);
+          }
         });
         this.gisInited = true;
         this.checkReady(resolve, reject);
@@ -118,8 +122,15 @@ class GoogleDriveService {
   // حفظ الـ token في localStorage
   private saveToken(token: any): void {
     try {
-      localStorage.setItem('google_drive_token', JSON.stringify(token));
-      console.log('✅ Token saved to localStorage');
+      // إضافة وقت انتهاء الصلاحية
+      const tokenWithExpiry = {
+        ...token,
+        expires_at: Date.now(),
+        expires_in: token.expires_in || 3600 // ساعة واحدة افتراضياً
+      };
+      
+      localStorage.setItem('google_drive_token', JSON.stringify(tokenWithExpiry));
+      console.log('✅ Token saved to localStorage with expiry time');
     } catch (error) {
       console.error('❌ Failed to save token to localStorage:', error);
     }
@@ -171,6 +182,23 @@ class GoogleDriveService {
         redirect_uri: window.location.origin
       });
     });
+  }
+
+  // إعادة المصادقة تلقائياً عند فشل الـ token
+  async reauthenticate(): Promise<void> {
+    console.log('🔄 Re-authenticating with Google Drive...');
+    
+    // مسح الـ token القديم
+    this.clearToken();
+    
+    // محاولة تسجيل الدخول مرة أخرى
+    try {
+      await this.signIn();
+      console.log('✅ Re-authentication successful');
+    } catch (error) {
+      console.error('❌ Re-authentication failed:', error);
+      throw error;
+    }
   }
 
   // رفع ملف إلى Google Drive
@@ -296,23 +324,51 @@ class GoogleDriveService {
 
       // البحث عن المجلد باستخدام REST API بدلاً من gapi.client
       console.log('Searching for folder using REST API...');
-      const searchResponse = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(folderName)}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name)`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token.access_token}`,
-        },
-      });
+      try {
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(folderName)}'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false&fields=files(id,name)`, {
+          method: 'GET',
+          headers: new Headers({
+            'Authorization': `Bearer ${token.access_token}`,
+          }),
+        });
 
-      if (!searchResponse.ok) {
-        throw new Error(`فشل البحث عن المجلد: ${searchResponse.status}`);
-      }
+        console.log('Search response status:', response.status);
+        
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('فشل البحث عن المجلد: 401 - غير مصرح. يرجى تسجيل الدخول مرة أخرى.');
+          } else if (response.status === 403) {
+            throw new Error('فشل البحث عن المجلد: 403 - ممنوع. قد تكون هناك مشكلة في API Key أو الصلاحيات.');
+          } else {
+            const errorText = await response.text();
+            throw new Error(`فشل البحث عن المجلد: ${response.status} - ${errorText}`);
+          }
+        }
 
-      const searchResult = await searchResponse.json();
-      console.log('Search result:', searchResult);
+        const searchResult = await response.json();
+        console.log('Search result:', searchResult);
 
-      if (searchResult.files && searchResult.files.length > 0) {
-        console.log('Folder found:', searchResult.files[0]);
-        return searchResult.files[0].id;
+        if (searchResult.files && searchResult.files.length > 0) {
+          console.log('Folder found:', searchResult.files[0]);
+          return searchResult.files[0].id;
+        }
+      } catch (searchError) {
+        console.error('Search error:', searchError);
+        
+        // إذا كان الخطأ 401، حاول إعادة المصادقة
+        if (searchError.message.includes('401') || searchError.message.includes('غير مصرح')) {
+          console.log('🔄 Token expired, attempting re-authentication...');
+          try {
+            await this.reauthenticate();
+            // إعادة المحاولة بعد إعادة المصادقة
+            return await this.getOrCreateFolder(folderName);
+          } catch (reauthError) {
+            console.error('❌ Re-authentication failed:', reauthError);
+            throw searchError;
+          }
+        }
+        
+        throw searchError;
       }
 
       console.log('Creating new folder...');
@@ -431,28 +487,60 @@ class GoogleDriveService {
 
   // التحقق من تسجيل الدخول
   isSignedIn(): boolean {
-    // التحقق من الـ token في الذاكرة أولاً
-    const currentToken = window.gapi?.client?.getToken()?.access_token;
-    if (currentToken) {
-      return true;
-    }
-    
-    // إذا لم يوجد في الذاكرة، حاول استعادته من localStorage
     try {
-      const savedToken = localStorage.getItem('google_drive_token');
-      if (savedToken) {
-        const token = JSON.parse(savedToken);
-        if (token.access_token) {
-          window.gapi.client.setToken(token);
-          console.log('✅ Token restored from localStorage during check');
+      // التحقق من وجود gapi و client أولاً
+      if (!window.gapi || !window.gapi.client) {
+        console.log('🔍 isSignedIn: gapi or gapi.client not available');
+        return false;
+      }
+      
+      // التحقق من الـ token في الذاكرة أولاً
+      const currentToken = window.gapi.client.getToken();
+      if (currentToken && currentToken.access_token) {
+        // التحقق إذا كان الـ token صالحاً (ليس منتهي الصلاحية)
+        const tokenAge = Date.now() - (currentToken.expires_at || 0);
+        const tokenExpiresIn = currentToken.expires_in || 3600; // ساعة واحدة افتراضيا
+        
+        if (tokenAge < tokenExpiresIn * 1000) {
+          console.log('🔍 isSignedIn: Valid token found in memory');
           return true;
+        } else {
+          console.log('🔍 isSignedIn: Token expired, clearing...');
+          window.gapi.client.setToken(null);
+          this.clearToken();
         }
       }
+      
+      // إذا لم يوجد في الذاكرة، حاول استعادته من localStorage
+      try {
+        const savedToken = localStorage.getItem('google_drive_token');
+        if (savedToken) {
+          const token = JSON.parse(savedToken);
+          if (token.access_token) {
+            // التحقق من صلاحية الـ token المحفوظ
+            const tokenAge = Date.now() - (token.expires_at || 0);
+            const tokenExpiresIn = token.expires_in || 3600;
+            
+            if (tokenAge < tokenExpiresIn * 1000) {
+              window.gapi.client.setToken(token);
+              console.log('🔍 isSignedIn: Valid token restored from localStorage');
+              return true;
+            } else {
+              console.log('🔍 isSignedIn: Saved token expired, clearing...');
+              this.clearToken();
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Failed to check saved token:', error);
+      }
+      
+      console.log('🔍 isSignedIn: No valid token found');
+      return false;
     } catch (error) {
-      console.error('❌ Failed to check saved token:', error);
+      console.error('❌ Error in isSignedIn:', error);
+      return false;
     }
-    
-    return false;
   }
 
   // تسجيل الخروج
@@ -468,6 +556,8 @@ class GoogleDriveService {
 // تصدير الخدمة
 export const googleDriveService = new GoogleDriveService();
 
+export type { UploadResponse };
+
 // تعريفات TypeScript للـ Google APIs
 declare global {
   interface Window {
@@ -475,5 +565,3 @@ declare global {
     google: any;
   }
 }
-
-export type { UploadResponse };

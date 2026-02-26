@@ -269,6 +269,12 @@ export interface LegalReference {
   author?: string;
   url?: string;
   tags?: string[];
+  // Google Drive fields
+  uploadedToDrive?: boolean;
+  driveFileId?: string;
+  driveLink?: string;
+  driveContentLink?: string;
+  uploadDate?: string;
 }
 
 export interface WorkLocation {

@@ -2,7 +2,9 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { LegalReference, ReferenceType, LawBranch } from '../types';
 import { searchLegalReferences, fetchDetailedReferenceContent } from '../services/geminiService';
-import { Search, Book, Scale, FileText, Library, Filter, Plus, X, Tag, Gavel, Bookmark, ArrowRight, ExternalLink, Sparkles, Loader2, Globe, Calendar, User, Hash, Download, Check, Link as LinkIcon, Upload, FileSearch, AlertTriangle } from 'lucide-react';
+import { getLegalReferences, addLegalReference } from '../services/dbService';
+import { googleDriveService } from '../services/googleDriveService';
+import { Search, Book, Scale, FileText, Library, Filter, Plus, X, Tag, Gavel, Bookmark, ArrowRight, ExternalLink, Sparkles, Loader2, Globe, Calendar, User, Hash, Download, Check, Link as LinkIcon, Upload, FileSearch, AlertTriangle, HardDrive } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -17,6 +19,10 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
   const [searchMode, setSearchMode] = useState<'keyword' | 'article'>('keyword');
   const [selectedBranch, setSelectedBranch] = useState<LawBranch | 'all'>('all');
   const [selectedType, setSelectedType] = useState<ReferenceType | 'all'>('all');
+  
+  // Firebase State
+  const [firebaseReferences, setFirebaseReferences] = useState<LegalReference[]>([]);
+  const [isLoadingFirebase, setIsLoadingFirebase] = useState(false);
   
   // Modals State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -35,6 +41,10 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
   // File Import Refs
   const importFileRef = useRef<HTMLInputElement>(null);
 
+  // Google Drive Upload State
+  const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
+  const [uploadToDrive, setUploadToDrive] = useState(true); // Default to Google Drive
+
   // New Reference Form State
   const [newRef, setNewRef] = useState<Partial<LegalReference>>({
     title: '',
@@ -45,9 +55,53 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
   });
   const [tagInput, setTagInput] = useState('');
 
+  // --- Firebase Data Loading ---
+  const loadFirebaseReferences = async () => {
+    if (isLoadingFirebase) return;
+    
+    setIsLoadingFirebase(true);
+    try {
+      const firebaseRefs = await getLegalReferences();
+      setFirebaseReferences(firebaseRefs);
+      console.log('✅ Loaded references from Firebase:', firebaseRefs.length);
+    } catch (error) {
+      console.error('❌ Error loading Firebase references:', error);
+    } finally {
+      setIsLoadingFirebase(false);
+    }
+  };
+
+  // Load Firebase data on component mount
+  React.useEffect(() => {
+    loadFirebaseReferences();
+    
+    // Initialize Google Drive service
+    const initializeGoogleDrive = async () => {
+      try {
+        console.log('Initializing Google Drive service...');
+        await googleDriveService.initialize();
+        console.log('Google Drive service initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize Google Drive service:', error);
+      }
+    };
+    
+    initializeGoogleDrive();
+  }, []);
+
+  // --- Combined References (Local + Firebase) ---
+  const allReferences = useMemo(() => {
+    const combined = [...references, ...firebaseReferences];
+    // Remove duplicates by title
+    const unique = combined.filter((ref, index, self) => 
+      index === self.findIndex(r => r.title === ref.title)
+    );
+    return unique;
+  }, [references, firebaseReferences]);
+
   // --- Filtering Logic ---
   const filteredRefs = useMemo(() => {
-    return references.filter(ref => {
+    return allReferences.filter(ref => {
       // 1. Category Filters
       if (selectedBranch !== 'all' && ref.branch !== selectedBranch) return false;
       if (selectedType !== 'all' && ref.type !== selectedType) return false;
@@ -66,7 +120,7 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
         );
       }
     });
-  }, [references, searchTerm, searchMode, selectedBranch, selectedType]);
+  }, [allReferences, searchTerm, searchMode, selectedBranch, selectedType]);
 
   // --- Handlers ---
   const handleAddTag = () => {
@@ -76,16 +130,111 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (onAddReference && newRef.title) {
+    if (!onAddReference || !newRef.title) return;
+
+    try {
+      let referenceData: Omit<LegalReference, 'id'> = {
+        title: newRef.title || '',
+        type: newRef.type || 'law',
+        branch: newRef.branch || 'civil',
+        description: newRef.description || '',
+        tags: newRef.tags || [],
+        uploadDate: new Date().toISOString()
+      };
+
+      // Add optional fields only if they have values
+      if (newRef.articleNumber && newRef.articleNumber.trim()) {
+        referenceData.articleNumber = newRef.articleNumber.trim();
+      }
+      if (newRef.year && newRef.year > 0) {
+        referenceData.year = newRef.year;
+      }
+      if (newRef.courtName && newRef.courtName.trim()) {
+        referenceData.courtName = newRef.courtName.trim();
+      }
+      if (newRef.author && newRef.author.trim()) {
+        referenceData.author = newRef.author.trim();
+      }
+
+      // If there's a file to upload and Google Drive is enabled
+      if (uploadToDrive) {
+        setIsUploadingToDrive(true);
+        try {
+          // Check if Google Drive is available
+          if (!window.gapi || !window.gapi.client) {
+            console.log('Google API not available, skipping Google Drive upload');
+            setIsUploadingToDrive(false);
+            alert('Google Drive غير متاح حالياً. سيتم حفظ المرجع بدون Google Drive.');
+          } else {
+            // Check if signed in, if not try to sign in
+            if (!googleDriveService.isSignedIn()) {
+              console.log('Not signed in to Google Drive, signing in...');
+              await googleDriveService.signIn();
+              // Wait for sign in
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+
+            // Create a dummy PDF file for the reference
+            const pdf = new jsPDF();
+            pdf.setFont('helvetica');
+            pdf.setFontSize(16);
+            pdf.text(newRef.title || '', 20, 20);
+            
+            if (newRef.description) {
+              pdf.setFontSize(12);
+              const lines = pdf.splitTextToSize(newRef.description, 170);
+              pdf.text(lines, 20, 40);
+            }
+            
+            const pdfBlob = pdf.output('blob');
+            const pdfFile = new File([pdfBlob], `${newRef.title}.pdf`, { type: 'application/pdf' });
+
+            // Upload to Google Drive
+            const driveResponse = await googleDriveService.uploadFile(
+              pdfFile, 
+              'المراجع القانونية'
+            );
+            
+            console.log('Google Drive response:', driveResponse);
+
+            // Update reference data with Google Drive info
+            referenceData.driveFileId = driveResponse.fileId;
+            referenceData.driveLink = driveResponse.webViewLink;
+            referenceData.driveContentLink = driveResponse.webContentLink;
+            referenceData.uploadedToDrive = true;
+            referenceData.url = driveResponse.webViewLink;
+            
+            setIsUploadingToDrive(false);
+          }
+        } catch (error) {
+          console.error('Error uploading to Google Drive:', error);
+          setIsUploadingToDrive(false);
+          // Continue without Google Drive if upload fails
+          alert('فشل رفع الملف إلى Google Drive. سيتم حفظ المرجع بدون Google Drive.');
+        }
+      }
+
+      // Save to Firebase
+      const refId = await addLegalReference(referenceData);
+      
+      // Update local state
       onAddReference({
-        ...newRef,
-        id: Math.random().toString(36).substring(2, 9),
-      } as LegalReference);
+        ...referenceData,
+        id: refId,
+      });
+
       setIsAddModalOpen(false);
       // Reset form
       setNewRef({ title: '', type: 'law', branch: 'civil', description: '', tags: [] });
+      setUploadToDrive(true); // Reset to default
+      
+      alert('تم حفظ المرجع القانوني بنجاح!');
+    } catch (error) {
+      console.error('Error saving reference:', error);
+      setIsUploadingToDrive(false);
+      alert('حدث خطأ أثناء حفظ المرجع. يرجى المحاولة مرة أخرى.');
     }
   };
 
@@ -148,65 +297,170 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
   const handleSaveToLibrary = async (res: LegalReference) => {
     if (!onAddReference) return;
 
-    // Case 1: External URL already exists (Real PDF found by AI)
-    if (res.url) {
-       onAddReference({
-          ...res,
-          id: Math.random().toString(36).substring(2, 9),
-          // Keep description as is
-       });
-       alert('تم حفظ رابط المرجع في المكتبة بنجاح.');
-       return;
-    }
-
-    // Case 2: Generate PDF from Content (AI Generation)
-    setIsGeneratingPdf(res.id);
-
     try {
-      // 1. Fetch detailed content text
-      const content = await fetchDetailedReferenceContent(res.title, res.description || '');
-      setPdfContent(content);
+      let referenceData: Omit<LegalReference, 'id'> = {
+        title: res.title || '',
+        type: res.type || 'law',
+        branch: res.branch || 'civil',
+        description: res.description || '',
+        tags: res.tags || [],
+        uploadDate: new Date().toISOString()
+      };
 
-      // 2. Wait for state update and DOM rendering of hidden div
-      setTimeout(async () => {
-        if (!pdfPrintRef.current) return;
+      // Add optional fields only if they have values
+      if (res.articleNumber && res.articleNumber.trim()) {
+        referenceData.articleNumber = res.articleNumber.trim();
+      }
+      if (res.year && res.year > 0) {
+        referenceData.year = res.year;
+      }
+      if (res.courtName && res.courtName.trim()) {
+        referenceData.courtName = res.courtName.trim();
+      }
+      if (res.author && res.author.trim()) {
+        referenceData.author = res.author.trim();
+      }
+      if (res.url && res.url.trim()) {
+        referenceData.url = res.url.trim();
+      }
 
-        // 3. Capture hidden div as image (handles Arabic correctly)
-        const canvas = await html2canvas(pdfPrintRef.current, {
-           scale: 2,
-           useCORS: true
-        });
-        const imgData = canvas.toDataURL('image/png');
+      // Case 1: External URL already exists (Real PDF found by AI)
+      if (res.url && !res.url.startsWith('blob:')) {
+        // Upload to Google Drive if enabled
+        if (uploadToDrive) {
+          setIsUploadingToDrive(true);
+          try {
+            // Check if signed in, if not try to sign in
+            if (!googleDriveService.isSignedIn()) {
+              console.log('Not signed in to Google Drive, signing in...');
+              await googleDriveService.signIn();
+              // Wait for sign in
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
 
-        // 4. Create PDF
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const imgProps = pdf.getImageProperties(imgData);
-        const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            // Download the file from URL
+            const response = await fetch(res.url);
+            const blob = await response.blob();
+            const file = new File([blob], `${res.title}.pdf`, { type: 'application/pdf' });
+            
+            // Upload to Google Drive
+            const driveResponse = await googleDriveService.uploadFile(
+              file, 
+              'المراجع القانونية'
+            );
+            
+            console.log('Google Drive response:', driveResponse);
+
+            // Update reference data with Google Drive info
+            referenceData.driveFileId = driveResponse.fileId;
+            referenceData.driveLink = driveResponse.webViewLink;
+            referenceData.driveContentLink = driveResponse.webContentLink;
+            referenceData.uploadedToDrive = true;
+            referenceData.url = driveResponse.webViewLink;
+            
+            setIsUploadingToDrive(false);
+          } catch (error) {
+            console.error('Error uploading to Google Drive:', error);
+            setIsUploadingToDrive(false);
+            // Continue with original URL if Google Drive fails
+          }
+        }
+
+        // Save to Firebase
+        const refId = await addLegalReference(referenceData);
         
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
-        const pdfBlob = pdf.output('blob');
-        const pdfUrl = URL.createObjectURL(pdfBlob);
-
-        // 5. Add to library with PDF URL
+        // Update local state
         onAddReference({
-          ...res,
-          id: Math.random().toString(36).substring(2, 9),
-          description: content.substring(0, 300) + '...', // Store summary
-          url: pdfUrl // This makes it viewable later as a "Generated PDF"
+          ...referenceData,
+          id: refId,
         });
+        
+        alert('تم حفظ رابط المرجع في المكتبة بنجاح.');
+        return;
+      }
 
+      // Case 2: Generate PDF from Content (AI Generation)
+      setIsGeneratingPdf(res.id);
+
+      try {
+        // 1. Fetch detailed content text
+        const content = await fetchDetailedReferenceContent(res.title, res.description || '');
+        setPdfContent(content);
+
+        // 2. Wait for state update and DOM rendering of hidden div
+        setTimeout(async () => {
+          if (!pdfPrintRef.current) return;
+
+          // 3. Capture hidden div as image (handles Arabic correctly)
+          const canvas = await html2canvas(pdfPrintRef.current, {
+             scale: 2,
+             useCORS: true
+          });
+          const imgData = canvas.toDataURL('image/png');
+
+          // 4. Create PDF
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const imgProps = pdf.getImageProperties(imgData);
+          const imgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+          
+          pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
+          const pdfBlob = pdf.output('blob');
+          const pdfFile = new File([pdfBlob], `${res.title}.pdf`, { type: 'application/pdf' });
+
+          // 5. Upload to Google Drive if enabled
+          if (uploadToDrive) {
+            setIsUploadingToDrive(true);
+            try {
+              const driveResponse = await googleDriveService.uploadFile(
+                pdfFile, 
+                'المراجع القانونية'
+              );
+              
+              console.log('Google Drive response:', driveResponse);
+
+              // Update reference data with Google Drive info
+              referenceData.driveFileId = driveResponse.fileId;
+              referenceData.driveLink = driveResponse.webViewLink;
+              referenceData.driveContentLink = driveResponse.webContentLink;
+              referenceData.uploadedToDrive = true;
+              referenceData.url = driveResponse.webViewLink;
+              
+              setIsUploadingToDrive(false);
+            } catch (error) {
+              console.error('Error uploading to Google Drive:', error);
+              setIsUploadingToDrive(false);
+              // Continue with local PDF if Google Drive fails
+            }
+          }
+
+          // 6. Save to Firebase
+          const refId = await addLegalReference(referenceData);
+          
+          // 7. Update local state
+          onAddReference({
+            ...referenceData,
+            id: refId,
+          });
+
+          setIsGeneratingPdf(null);
+          setPdfContent('');
+          alert('تم إنشاء وحفظ المرجع القانوني بنجاح!');
+        }, 500);
+      } catch (error) {
+        console.error('Error generating PDF:', error);
         setIsGeneratingPdf(null);
-        setPdfContent(''); // Clear memory
-        alert('تم توليد المرجع الكامل وحفظه كملف PDF في المكتبة بنجاح!');
-      }, 800); // Increased timeout for rendering
-
+        alert('حدث خطأ أثناء إنشاء الملف PDF. يرجى المحاولة مرة أخرى.');
+      }
     } catch (error) {
-      console.error("PDF Generation Error:", error);
-      alert('حدث خطأ أثناء تحميل الملف.');
+      console.error('Error saving reference:', error);
+      setIsUploadingToDrive(false);
       setIsGeneratingPdf(null);
+      alert('حدث خطأ أثناء حفظ المرجع. يرجى المحاولة مرة أخرى.');
     }
   };
+
+  // --- Handlers ---
 
   // --- Styling Helpers ---
   const getTypeColor = (type: ReferenceType) => {
@@ -445,7 +699,7 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
       )}
 
       {/* 2. Local Results Grid */}
-      <h3 className="font-bold text-slate-800 dark:text-white text-lg px-2">مراجع المكتبة المحلية</h3>
+      <h3 className="font-bold text-slate-800 dark:text-white text-lg px-2">مراجع المكتبة القانونية</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredRefs.map(ref => (
           <div key={ref.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-md transition-all group flex flex-col">
@@ -735,6 +989,27 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
                  </div>
               )}
 
+              {/* Google Drive Upload Option */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={uploadToDrive}
+                      onChange={(e) => setUploadToDrive(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      رفع إلى Google Drive
+                    </span>
+                  </label>
+                  <HardDrive className="w-4 h-4 text-green-500" />
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  سيتم حفظ الملف في مجلد "المراجع القانونية" في Google Drive
+                </p>
+              </div>
+
               {newRef.type === 'encyclopedia' && (
                  <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">المؤلف</label>
@@ -782,7 +1057,16 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
 
               <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-slate-700">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300">إلغاء</button>
-                <button type="submit" className="flex-1 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-bold">حفظ المرجع</button>
+                <button type="submit" className="flex-1 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-bold flex items-center justify-center gap-2">
+                  {isUploadingToDrive ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      جاري الرفع إلى Google Drive...
+                    </>
+                  ) : (
+                    'حفظ المرجع'
+                  )}
+                </button>
               </div>
             </form>
           </div>
