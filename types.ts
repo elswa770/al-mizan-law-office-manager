@@ -275,6 +275,8 @@ export interface LegalReference {
   driveLink?: string;
   driveContentLink?: string;
   uploadDate?: string;
+  // Favorite field
+  isFavorite?: boolean;
 }
 
 export interface WorkLocation {

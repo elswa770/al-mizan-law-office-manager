@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { LegalReference, ReferenceType, LawBranch } from '../types';
 import { searchLegalReferences, fetchDetailedReferenceContent } from '../services/geminiService';
-import { getLegalReferences, addLegalReference } from '../services/dbService';
+import { getLegalReferences, addLegalReference, toggleFavoriteReference } from '../services/dbService';
 import { googleDriveService } from '../services/googleDriveService';
 import { Search, Book, Scale, FileText, Library, Filter, Plus, X, Tag, Gavel, Bookmark, ArrowRight, ExternalLink, Sparkles, Loader2, Globe, Calendar, User, Hash, Download, Check, Link as LinkIcon, Upload, FileSearch, AlertTriangle, HardDrive } from 'lucide-react';
 import { jsPDF } from "jspdf";
@@ -260,6 +260,45 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
     
     const pdfBlob = pdf.output('blob');
     return new File([pdfBlob], `${ref.title}.pdf`, { type: 'application/pdf' });
+  };
+
+  // --- Favorite Handler ---
+  const handleToggleFavorite = async (ref: LegalReference) => {
+    if (!ref.id) return;
+    
+    try {
+      const newFavoriteStatus = !ref.isFavorite;
+      await toggleFavoriteReference(ref.id, newFavoriteStatus);
+      
+      // Update local state
+      const updatedRef = { ...ref, isFavorite: newFavoriteStatus };
+      
+      // Update in allReferences
+      setFirebaseReferences(prev => 
+        prev.map(r => r.id === ref.id ? updatedRef : r)
+      );
+      
+      // Update in references if exists
+      if (onAddReference) {
+        const refIndex = references.findIndex(r => r.id === ref.id);
+        if (refIndex !== -1) {
+          const updatedRefs = [...references];
+          updatedRefs[refIndex] = updatedRef;
+          // Trigger update by calling onAddReference with the updated array
+          updatedRefs.forEach(r => {
+            if (r.id !== ref.id) {
+              onAddReference(r);
+            }
+          });
+          onAddReference(updatedRef);
+        }
+      }
+      
+      alert(newFavoriteStatus ? 'تمت إضافة المرجع إلى المفضلة' : 'تم إزالة المرجع من المفضلة');
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      alert('حدث خطأ أثناء تحديث المفضلة');
+    }
   };
 
   // --- PDF Import Handler ---
@@ -735,9 +774,14 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
           <div key={ref.id} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-md transition-all group flex flex-col">
             <div className="p-5 flex-1">
               <div className="flex justify-between items-start mb-3">
-                <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${getTypeColor(ref.type)}`}>
-                  {ref.type === 'law' ? 'قانون' : ref.type === 'ruling' ? 'حكم محكمة' : ref.type === 'encyclopedia' ? 'موسوعة' : 'لائحة'}
-                </span>
+                <div className="flex items-center gap-2">
+                  {ref.isFavorite && (
+                    <Bookmark className="w-4 h-4 text-yellow-500 fill-current" />
+                  )}
+                  <span className={`text-[10px] px-2 py-1 rounded-full font-bold ${getTypeColor(ref.type)}`}>
+                    {ref.type === 'law' ? 'قانون' : ref.type === 'ruling' ? 'حكم محكمة' : ref.type === 'encyclopedia' ? 'موسوعة' : 'لائحة'}
+                  </span>
+                </div>
                 <span className="text-xs text-slate-400 font-mono bg-slate-50 dark:bg-slate-700 px-2 py-1 rounded">
                   {getBranchLabel(ref.branch)}
                 </span>
@@ -912,9 +956,15 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
                     </a>
                  )}
                  <button 
-                   className="px-6 py-3 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
+                   onClick={() => selectedReference && handleToggleFavorite(selectedReference)}
+                   className={`px-6 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 ${
+                     selectedReference.isFavorite 
+                       ? 'bg-yellow-100 text-yellow-700 border border-yellow-300 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700' 
+                       : 'border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                   }`}
                  >
-                    <Bookmark className="w-5 h-5" /> حفظ في المفضلة
+                    <Bookmark className={`w-5 h-5 ${selectedReference.isFavorite ? 'fill-current' : ''}`} /> 
+                    {selectedReference.isFavorite ? 'إزالة من المفضلة' : 'حفظ في المفضلة'}
                  </button>
               </div>
            </div>

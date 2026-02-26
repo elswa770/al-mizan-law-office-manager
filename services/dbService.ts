@@ -252,6 +252,11 @@ export const deleteLegalReference = async (id: string) => {
   await deleteDoc(doc(db, "references", id));
 };
 
+export const toggleFavoriteReference = async (id: string, isFavorite: boolean): Promise<void> => {
+  const docRef = doc(db, "references", id);
+  await updateDoc(docRef, { isFavorite });
+};
+
 export const addActivity = async (activity: Omit<ActivityLog, 'id' | 'timestamp'>): Promise<string> => {
   const docRef = await addDoc(collection(db, "activities"), {
     ...activity,
