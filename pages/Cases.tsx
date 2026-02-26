@@ -8,7 +8,7 @@ interface CasesProps {
   cases: Case[];
   clients: Client[];
   onCaseClick: (caseId: string) => void;
-  onAddCase?: (newCase: Case) => void;
+  onAddCase?: (newCase: Omit<Case, 'id'>) => void;
   readOnly?: boolean;
 }
 
@@ -58,8 +58,7 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
     if (!onAddCase) return;
     
     const client = clients.find(c => c.id === formData.clientId);
-    const newCase: Case = {
-      id: Math.random().toString(36).substring(2, 9),
+    const newCase: Omit<Case, 'id'> = {
       title: formData.title || '',
       caseNumber: formData.caseNumber || '',
       year: formData.year || new Date().getFullYear(),

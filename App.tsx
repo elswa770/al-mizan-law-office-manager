@@ -313,10 +313,31 @@ function App() {
     setCurrentPage('clients');
   };
 
-  const handleAddCase = async (newCase: Case) => {
+  const handleAddCase = async (newCase: Omit<Case, 'id'>) => {
     try {
+      console.log('🆕 App.tsx - handleAddCase called with:', newCase);
+      
+      // التحقق من عدم وجود القضية مسبقاً (باستخدام caseNumber و title)
+      const existingCase = cases.find(c => 
+        c.caseNumber === newCase.caseNumber && 
+        c.title === newCase.title
+      );
+      
+      if (existingCase) {
+        console.warn('⚠️ App.tsx - Case already exists:', existingCase);
+        setError('هذه القضية موجودة بالفعل');
+        return;
+      }
+      
       const caseId = await addCase(newCase);
-      setCases(prev => [...prev, { ...newCase, id: caseId }]);
+      console.log('✅ App.tsx - Case added with ID:', caseId);
+      
+      // إضافة القضية الجديدة إلى الحالة المحلية مع الـ ID الصحيح
+      setCases(prev => {
+        const updatedCases = [...prev, { ...newCase, id: caseId }];
+        console.log('📝 App.tsx - Updated cases array after add:', updatedCases);
+        return updatedCases;
+      });
       
       // Log activity
       await handleAddActivity({
@@ -333,8 +354,31 @@ function App() {
 
   const handleUpdateCase = async (updatedCase: Case) => {
     try {
+      console.log('🔄 App.tsx - handleUpdateCase called with:', updatedCase);
+      
+      // التحقق من وجود id
+      if (!updatedCase.id) {
+        console.error('❌ App.tsx - Case ID is missing:', updatedCase);
+        setError('لا يمكن تحديث قضية بدون معرف');
+        return;
+      }
+      
+      // تحديث في Firebase
       await updateCase(updatedCase.id, updatedCase);
-      setCases(prev => prev.map(c => c.id === updatedCase.id ? updatedCase : c));
+      console.log('✅ App.tsx - Firebase update successful');
+      
+      // تحديث الحالة المحلية بشكل صحيح
+      setCases(prev => {
+        const updatedCases = prev.map(c => {
+          if (c.id === updatedCase.id) {
+            // دمج البيانات بدلاً من الاستبدال الكامل
+            return { ...c, ...updatedCase };
+          }
+          return c;
+        });
+        console.log('📝 App.tsx - Updated cases array:', updatedCases);
+        return updatedCases;
+      });
       
       // Log activity
       await handleAddActivity({
@@ -434,35 +478,29 @@ function App() {
     try {
       console.log('🔄 App.tsx - handleUpdateClient called with:', updatedClient);
       
-      // دالة تنظيف قوية لإزالة جميع قيم undefined والحقول الفارغة
-      const cleanObject = (obj: any): any => {
-        const cleaned: any = {};
-        console.log('🔍 App.tsx - Cleaning object:', obj);
-        for (const key in obj) {
-          console.log(`🔍 App.tsx - Key: ${key}, Value:`, obj[key], 'Type:', typeof obj[key]);
-          if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
-            cleaned[key] = obj[key];
-            console.log(`✅ App.tsx - Keeping: ${key}`);
-          } else {
-            console.log(`❌ App.tsx - Removing: ${key}`);
-          }
-        }
-        console.log('🧹 App.tsx - Cleaned object:', cleaned);
-        return cleaned;
-      };
-      
-      const cleanClient = cleanObject(updatedClient);
-      
-      // التحقق النهائي
-      const hasUndefined = Object.values(cleanClient).some(val => val === undefined);
-      console.log('🚨 App.tsx - Has undefined values:', hasUndefined);
-      if (hasUndefined) {
-        console.error('❌ App.tsx ERROR: Still has undefined values!', cleanClient);
+      // التحقق من وجود id
+      if (!updatedClient.id) {
+        console.error('❌ App.tsx - Client ID is missing:', updatedClient);
+        setError('لا يمكن تحديث موكل بدون معرف');
+        return;
       }
       
-      console.log('📤 App.tsx - Sending to updateClient:', cleanClient);
-      await updateClient(updatedClient.id, cleanClient);
-      setClients(prev => prev.map(c => c.id === updatedClient.id ? updatedClient : c));
+      // تحديث في Firebase
+      await updateClient(updatedClient.id, updatedClient);
+      console.log('✅ App.tsx - Firebase update successful');
+      
+      // تحديث الحالة المحلية بشكل صحيح
+      setClients(prev => {
+        const updatedClients = prev.map(c => {
+          if (c.id === updatedClient.id) {
+            // دمج البيانات بدلاً من الاستبدال الكامل
+            return { ...c, ...updatedClient };
+          }
+          return c;
+        });
+        console.log('📝 App.tsx - Updated clients array:', updatedClients);
+        return updatedClients;
+      });
       
       // Log activity
       await handleAddActivity({

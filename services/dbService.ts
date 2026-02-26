@@ -114,10 +114,16 @@ export const getCases = async (): Promise<Case[]> => {
 };
 
 export const addCase = async (caseData: Omit<Case, 'id'>): Promise<string> => {
+  console.log('📤 dbService.ts - Adding case with data:', caseData);
+  
   // تنظيف الحقول undefined قبل إرسالها إلى Firebase
   const cleanCaseData = cleanObject(caseData);
+  console.log('🧹 dbService.ts - Cleaned case data:', cleanCaseData);
   
   const docRef = await addDoc(collection(db, "cases"), cleanCaseData);
+  console.log('✅ dbService.ts - Case added with Firebase ID:', docRef.id);
+  console.log('🔗 dbService.ts - Document path:', docRef.path);
+  
   return docRef.id;
 };
 
