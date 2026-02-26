@@ -229,6 +229,9 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
         id: refId,
       });
 
+      // ✅ تحديث البيانات من Firebase فوراً بعد الحفظ
+      await loadFirebaseReferences();
+
       setIsAddModalOpen(false);
       // Reset form
       setNewRef({ title: '', type: 'law', branch: 'civil', description: '', tags: [] });
@@ -395,6 +398,9 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
           ...referenceData,
           id: refId,
         });
+
+        // ✅ تحديث البيانات من Firebase فوراً بعد الحفظ
+        await loadFirebaseReferences();
         
         alert('تم حفظ رابط المرجع في المكتبة بنجاح.');
         return;
@@ -463,6 +469,9 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
             ...referenceData,
             id: refId,
           });
+
+          // ✅ تحديث البيانات من Firebase فوراً بعد الحفظ
+          await loadFirebaseReferences();
 
           setIsGeneratingPdf(null);
           setPdfContent('');

@@ -625,10 +625,11 @@ function App() {
 
   const handleAddReference = async (newRef: LegalReference) => {
     try {
-      const refId = await addLegalReference(newRef);
-      setReferences(prev => [{ ...newRef, id: refId }, ...prev]);
+      // ✅ لا داعي للحفظ مرة أخرى - تم الحفظ بالفعل في LegalReferences.tsx
+      // فقط أضف إلى الحالة المحلية
+      setReferences(prev => [newRef, ...prev]);
     } catch (err) {
-      console.error('Error adding reference:', err);
+      console.error('Error adding reference to local state:', err);
       setError('فشل في إضافة المرجع القانوني');
     }
   };
