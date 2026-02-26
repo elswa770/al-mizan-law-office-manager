@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Case, Client, CaseDocument, ClientDocument, CaseRuling } from '../types';
 import { FileText, Search, Filter, FolderOpen, User, Briefcase, File, Gavel, FileCheck, Shield, Download, Eye, ExternalLink, Calendar, Grid, List, Building2, Upload, X, Check, Cloud, Plus, Trash2 } from 'lucide-react';
 import CloudDocumentUpload from '../components/CloudDocumentUpload';
+import { googleDriveService } from '../services/googleDriveService';
 
 interface DocumentsProps {
   cases: Case[];
@@ -37,7 +38,7 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
 
   // --- Upload Modal State ---
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'local' | 'cloud'>('local');
+  const [isUploadingToDrive, setIsUploadingToDrive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadData, setUploadData] = useState({
     targetType: 'case' as 'case' | 'client',
@@ -46,8 +47,22 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
     type: 'pdf' as string, // For file type (pdf, image, word)
     docType: '' as string, // For specific doc type (contract, poa, etc.)
     isOriginal: false,
-    file: null as File | null
+    file: null as File | null,
+    uploadToDrive: true // Google Drive enabled by default
   });
+
+  // Initialize Google Drive
+  useEffect(() => {
+    const initGoogleDrive = async () => {
+      try {
+        await googleDriveService.initialize();
+        console.log('Google Drive initialized successfully');
+      } catch (error) {
+        console.error('Google Drive initialization failed:', error);
+      }
+    };
+    initGoogleDrive();
+  }, []);
 
   // --- 1. Data Aggregation Engine ---
   const allDocuments = useMemo(() => {
@@ -213,7 +228,8 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
       type: 'pdf',
       docType: 'other',
       isOriginal: false,
-      file: null
+      file: null,
+      uploadToDrive: true // Include uploadToDrive
     });
     setIsUploadModalOpen(true);
   };
@@ -237,44 +253,88 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
     }
   };
 
-  const handleSaveDocument = (e: React.FormEvent) => {
+  const handleSaveDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadData.file || !uploadData.name || !uploadData.targetId) return;
 
-    const fileUrl = URL.createObjectURL(uploadData.file);
-    const date = new Date().toISOString().split('T')[0];
-    const size = formatFileSize(uploadData.file.size);
+    try {
+      let fileUrl = '';
+      const date = new Date().toISOString().split('T')[0];
+      const size = formatFileSize(uploadData.file.size);
 
-    if (uploadData.targetType === 'case' && onUpdateCase) {
-       const targetCase = cases.find(c => c.id === uploadData.targetId);
-       if (targetCase) {
-          const newDoc: CaseDocument = {
-             id: Math.random().toString(36).substring(2, 9),
-             name: uploadData.name,
-             type: uploadData.type as any,
-             category: uploadData.docType as any,
-             url: fileUrl,
-             size: size,
-             uploadDate: date,
-             isOriginal: uploadData.isOriginal
-          };
-          onUpdateCase({ ...targetCase, documents: [...(targetCase.documents || []), newDoc] });
-       }
-    } else if (uploadData.targetType === 'client' && onUpdateClient) {
-       const targetClient = clients.find(c => c.id === uploadData.targetId);
-       if (targetClient) {
-          const newDoc: ClientDocument = {
-             id: Math.random().toString(36).substring(2, 9),
-             name: uploadData.name,
-             type: uploadData.docType as any,
-             url: fileUrl,
-             uploadDate: date,
-          };
-          onUpdateClient({ ...targetClient, documents: [...(targetClient.documents || []), newDoc] });
-       }
+      // Google Drive Upload
+      if (uploadData.uploadToDrive) {
+        setIsUploadingToDrive(true);
+        
+        // Check if signed in to Google
+        if (!googleDriveService.isSignedIn()) {
+          await googleDriveService.signIn();
+        }
+
+        // Get target name for folder
+        const targetName = uploadData.targetType === 'case' 
+          ? cases.find(c => c.id === uploadData.targetId)?.title || 'قضية'
+          : clients.find(c => c.id === uploadData.targetId)?.name || 'موكل';
+
+        // Upload to Google Drive
+        const driveResponse = await googleDriveService.uploadFile(
+          uploadData.file, 
+          targetName
+        );
+        
+        console.log('Google Drive response:', driveResponse);
+        fileUrl = driveResponse.webViewLink;
+        setIsUploadingToDrive(false);
+      } else {
+        // Local upload
+        fileUrl = URL.createObjectURL(uploadData.file);
+      }
+
+      // Save to case or client
+      if (uploadData.targetType === 'case' && onUpdateCase) {
+         const targetCase = cases.find(c => c.id === uploadData.targetId);
+         if (targetCase) {
+            const newDoc: CaseDocument = {
+               id: Math.random().toString(36).substring(2, 9),
+               name: uploadData.name,
+               type: uploadData.type as any,
+               category: uploadData.docType as any,
+               url: fileUrl,
+               size: size,
+               uploadDate: date,
+               isOriginal: uploadData.isOriginal,
+               uploadedToDrive: uploadData.uploadToDrive,
+               driveFileId: uploadData.uploadToDrive ? undefined : undefined,
+               driveLink: uploadData.uploadToDrive ? fileUrl : undefined,
+               driveContentLink: uploadData.uploadToDrive ? fileUrl : undefined
+            };
+            onUpdateCase({ ...targetCase, documents: [...(targetCase.documents || []), newDoc] });
+         }
+      } else if (uploadData.targetType === 'client' && onUpdateClient) {
+         const targetClient = clients.find(c => c.id === uploadData.targetId);
+         if (targetClient) {
+            const newDoc: ClientDocument = {
+               id: Math.random().toString(36).substring(2, 9),
+               name: uploadData.name,
+               type: uploadData.docType as any,
+               url: fileUrl,
+               uploadDate: date,
+               uploadedToDrive: uploadData.uploadToDrive,
+               driveFileId: uploadData.uploadToDrive ? undefined : undefined,
+               driveLink: uploadData.uploadToDrive ? fileUrl : undefined,
+               driveContentLink: uploadData.uploadToDrive ? fileUrl : undefined
+            };
+            onUpdateClient({ ...targetClient, documents: [...(targetClient.documents || []), newDoc] });
+         }
+      }
+
+      setIsUploadModalOpen(false);
+      alert('تم حفظ المستند بنجاح!');
+    } catch (error) {
+      console.error('Error saving document:', error);
+      setIsUploadingToDrive(false);
+      alert('حدث خطأ أثناء حفظ المستند. يرجى المحاولة مرة أخرى.');
     }
-
-    setIsUploadModalOpen(false);
   };
 
   return (
@@ -367,40 +427,17 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
 
          {/* Content Area */}
          <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-900/50">
-            {/* Tab Navigation */}
+            {/* Tab Navigation - Local Documents Only */}
             <div className="flex gap-4 mb-6 border-b border-slate-200 dark:border-slate-700">
                <button
-                  onClick={() => setActiveTab('local')}
-                  className={`pb-3 px-1 font-medium text-sm transition-colors border-b-2 ${
-                     activeTab === 'local' 
-                       ? 'text-primary-600 dark:text-primary-400 border-primary-600 dark:border-primary-400' 
-                       : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
+                  className="pb-3 px-1 font-medium text-sm transition-colors border-b-2 text-primary-600 dark:text-primary-400 border-primary-600 dark:border-primary-400"
                >
                   <FolderOpen className="w-4 h-4 inline ml-2" />
-                  المستندات المحلية
-               </button>
-               <button
-                  onClick={() => setActiveTab('cloud')}
-                  className={`pb-3 px-1 font-medium text-sm transition-colors border-b-2 ${
-                     activeTab === 'cloud' 
-                       ? 'text-primary-600 dark:text-primary-400 border-primary-600 dark:border-primary-400' 
-                       : 'text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-300'
-                  }`}
-               >
-                  <Cloud className="w-4 h-4 inline ml-2" />
-                  المستندات السحابية
+                  مستندات القضايا
                </button>
             </div>
 
-            {/* Tab Content */}
-            {activeTab === 'cloud' ? (
-               <CloudDocumentUpload 
-                  caseId={uploadData.targetType === 'case' ? uploadData.targetId : undefined}
-                  clientId={uploadData.targetType === 'client' ? uploadData.targetId : undefined}
-               />
-            ) : (
-               <>
+            {/* Tab Content - Case Documents Only */}
             {filteredDocs.length > 0 ? (
                viewMode === 'grid' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -453,7 +490,6 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
                                     <Eye className="w-3 h-3" /> معاينة
                                  </a>
                               )}
-                              {/* Placeholder for actions like Delete/Edit (would require more prop plumbing) */}
                            </div>
                         </div>
                      ))}
@@ -516,8 +552,6 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
                   <p className="text-lg font-medium">لا توجد مستندات تطابق البحث</p>
                   <p className="text-sm">جرب تغيير الفلاتر أو البحث بكلمات أخرى</p>
                </div>
-            )}
-               </>
             )}
          </div>
       </div>
@@ -590,6 +624,28 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
                      )}
                   </div>
 
+                  {/* Google Drive Option */}
+                  <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
+                     <label className="flex items-center gap-2 cursor-pointer">
+                        <input 
+                           type="checkbox" 
+                           checked={uploadData.uploadToDrive}
+                           onChange={e => setUploadData({...uploadData, uploadToDrive: e.target.checked})}
+                           className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                        />
+                        <Cloud className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                           الرفع على Google Drive
+                        </span>
+                     </label>
+                     {isUploadingToDrive && (
+                        <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                           <div className="animate-spin w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                           جاري الرفع...
+                        </div>
+                     )}
+                  </div>
+
                   {/* Document Details */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div>
@@ -643,10 +699,20 @@ const Documents: React.FC<DocumentsProps> = ({ cases, clients, onCaseClick, onCl
                      <button type="button" onClick={() => setIsUploadModalOpen(false)} className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold">إلغاء</button>
                      <button 
                         type="submit" 
-                        disabled={!uploadData.file || !uploadData.name || !uploadData.targetId} 
+                        disabled={!uploadData.file || !uploadData.name || !uploadData.targetId || isUploadingToDrive} 
                         className="flex-1 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-bold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                      >
-                        <Check className="w-4 h-4" /> حفظ المستند
+                        {isUploadingToDrive ? (
+                           <>
+                              <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                              جاري الرفع على Google Drive...
+                           </>
+                        ) : (
+                           <>
+                              {uploadData.uploadToDrive ? <Cloud className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                              حفظ المستند
+                           </>
+                        )}
                      </button>
                   </div>
                </form>
