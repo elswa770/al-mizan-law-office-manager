@@ -887,7 +887,57 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
                     </div>
                  ) : (
                     <>
-                       {/* Grid Metadata (Only if no PDF or complementary) */}
+                       {/* Header with Type and Branch */}
+                       <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-700/50 dark:to-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <div className="flex items-center justify-between mb-3">
+                             <div className="flex items-center gap-3">
+                                <span className={`text-sm px-3 py-1 rounded-full font-bold ${getTypeColor(selectedReference.type)}`}>
+                                   {selectedReference.type === 'law' ? 'قانون' : selectedReference.type === 'ruling' ? 'حكم محكمة' : selectedReference.type === 'encyclopedia' ? 'موسوعة' : 'لائحة'}
+                                </span>
+                                <span className="text-xs text-slate-500 font-mono bg-white dark:bg-slate-600 px-2 py-1 rounded">
+                                   {getBranchLabel(selectedReference.branch)}
+                                </span>
+                                {selectedReference.isFavorite && (
+                                   <Bookmark className="w-4 h-4 text-yellow-500 fill-current" />
+                                )}
+                             </div>
+                             {selectedReference.uploadDate && (
+                                <span className="text-xs text-slate-400">
+                                   {new Date(selectedReference.uploadDate).toLocaleDateString('ar-EG')}
+                                </span>
+                             )}
+                          </div>
+                          
+                          <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+                             {selectedReference.title}
+                          </h2>
+                          
+                          {/* External Links */}
+                          <div className="flex items-center gap-3">
+                             {selectedReference.url && (
+                                <a 
+                                   href={selectedReference.url} 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                                >
+                                   <ExternalLink className="w-4 h-4" /> رابط خارجي
+                                </a>
+                             )}
+                             {selectedReference.driveLink && (
+                                <a 
+                                   href={selectedReference.driveLink} 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   className="text-sm text-green-600 hover:text-green-700 flex items-center gap-1"
+                                >
+                                   <HardDrive className="w-4 h-4" /> Google Drive
+                                </a>
+                             )}
+                          </div>
+                       </div>
+
+                       {/* Grid Metadata */}
                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-100 dark:border-slate-700">
                           {selectedReference.articleNumber && (
                              <div>
@@ -921,7 +971,7 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
                              <FileText className="w-4 h-4" /> المحتوى / الملخص
                           </h4>
                           <div className="text-slate-600 dark:text-slate-300 leading-loose text-justify bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4 rounded-xl shadow-sm">
-                             {selectedReference.description}
+                             {selectedReference.description || 'لا يوجد وصف متاح لهذا المرجع.'}
                           </div>
                        </div>
                     </>
