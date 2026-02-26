@@ -176,20 +176,24 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
               await new Promise(resolve => setTimeout(resolve, 3000));
             }
 
-            // Create a dummy PDF file for the reference
-            const pdf = new jsPDF();
-            pdf.setFont('helvetica');
-            pdf.setFontSize(16);
-            pdf.text(newRef.title || '', 20, 20);
-            
-            if (newRef.description) {
-              pdf.setFontSize(12);
-              const lines = pdf.splitTextToSize(newRef.description, 170);
-              pdf.text(lines, 20, 40);
+            let pdfFile: File;
+
+            // ✅ إذا كان هناك ملف PDF أصلي تم استيراده، استخدمه
+            if (newRef.url && newRef.url.startsWith('blob:')) {
+              try {
+                const response = await fetch(newRef.url);
+                const blob = await response.blob();
+                pdfFile = new File([blob], `${newRef.title}.pdf`, { type: 'application/pdf' });
+                console.log('✅ Using original imported PDF file');
+              } catch (error) {
+                console.error('❌ Failed to fetch original PDF, creating new one:', error);
+                // إذا فشل جلب الملف الأصلي، أنشئ ملفاً جديداً
+                pdfFile = await createPdfFromReference(newRef);
+              }
+            } else {
+              // ✅ إذا لم يكن هناك ملف أصلي، أنشئ ملف PDF من البيانات
+              pdfFile = await createPdfFromReference(newRef);
             }
-            
-            const pdfBlob = pdf.output('blob');
-            const pdfFile = new File([pdfBlob], `${newRef.title}.pdf`, { type: 'application/pdf' });
 
             // Upload to Google Drive
             const driveResponse = await googleDriveService.uploadFile(
@@ -236,6 +240,23 @@ const LegalReferences: React.FC<LegalReferencesProps> = ({ references, onAddRefe
       setIsUploadingToDrive(false);
       alert('حدث خطأ أثناء حفظ المرجع. يرجى المحاولة مرة أخرى.');
     }
+  };
+
+  // --- PDF Creation Helper ---
+  const createPdfFromReference = async (ref: any): Promise<File> => {
+    const pdf = new jsPDF();
+    pdf.setFont('helvetica');
+    pdf.setFontSize(16);
+    pdf.text(ref.title || '', 20, 20);
+    
+    if (ref.description) {
+      pdf.setFontSize(12);
+      const lines = pdf.splitTextToSize(ref.description, 170);
+      pdf.text(lines, 20, 40);
+    }
+    
+    const pdfBlob = pdf.output('blob');
+    return new File([pdfBlob], `${ref.title}.pdf`, { type: 'application/pdf' });
   };
 
   // --- PDF Import Handler ---
