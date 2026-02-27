@@ -40,6 +40,7 @@ const MODULES = [
   { id: 'hearings', label: 'الجلسات والمواعيد' },
   { id: 'tasks', label: 'إدارة المهام' }, 
   { id: 'documents', label: 'الأرشيف والمستندات' },
+  { id: 'archive', label: 'إدارة الأرشيف' }, // Added Archive module
   { id: 'generator', label: 'منشئ العقود' }, // Added
   { id: 'fees', label: 'الحسابات (الإيرادات)' },
   { id: 'expenses', label: 'المصروفات الإدارية' },
