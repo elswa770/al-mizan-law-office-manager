@@ -39,8 +39,16 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
     type: ArchiveLocationType.BOX,
     fullPath: '',
     capacity: 100,
-    description: ''
+    description: '',
+    roomId: '',
+    cabinetId: '',
+    shelfId: ''
   });
+
+  // Hierarchical data
+  const [rooms, setRooms] = useState<ArchiveLocation[]>([]);
+  const [cabinets, setCabinets] = useState<ArchiveLocation[]>([]);
+  const [shelves, setShelves] = useState<ArchiveLocation[]>([]);
 
   const [requestForm, setRequestForm] = useState({
     caseId: '',
@@ -51,7 +59,7 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Load locations
+        // Load all locations
         const locationsQuery = query(collection(db, 'archiveLocations'), orderBy('createdAt', 'desc'));
         const locationsSnapshot = await getDocs(locationsQuery);
         const locationsData = locationsSnapshot.docs.map(doc => ({
@@ -59,6 +67,11 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
           ...doc.data()
         } as ArchiveLocation));
         setLocations(locationsData);
+
+        // Filter by type for hierarchical selection
+        setRooms(locationsData.filter(loc => loc.type === ArchiveLocationType.ROOM));
+        setCabinets(locationsData.filter(loc => loc.type === ArchiveLocationType.CABINET));
+        setShelves(locationsData.filter(loc => loc.type === ArchiveLocationType.SHELF));
 
         // Load requests
         const requestsQuery = query(collection(db, 'archiveRequests'), orderBy('requestDate', 'desc'));
@@ -78,6 +91,13 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
     loadData();
   }, []);
 
+  // Update hierarchical data when locations change
+  useEffect(() => {
+    setRooms(locations.filter(loc => loc.type === ArchiveLocationType.ROOM));
+    setCabinets(locations.filter(loc => loc.type === ArchiveLocationType.CABINET));
+    setShelves(locations.filter(loc => loc.type === ArchiveLocationType.SHELF));
+  }, [locations]);
+
   // --- Firebase Operations ---
   const addLocation = async () => {
     // Validate form
@@ -90,16 +110,38 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
       return;
     }
 
+    // Build full path based on hierarchy
+    let fullPath = locationForm.name;
+    let parentId: string | undefined;
+
+    if (locationForm.type === ArchiveLocationType.CABINET && locationForm.roomId) {
+      const room = rooms.find(r => r.id === locationForm.roomId);
+      fullPath = `${room?.name || ''} - ${locationForm.name}`;
+      parentId = locationForm.roomId;
+    } else if (locationForm.type === ArchiveLocationType.SHELF && locationForm.roomId && locationForm.cabinetId) {
+      const room = rooms.find(r => r.id === locationForm.roomId);
+      const cabinet = cabinets.find(c => c.id === locationForm.cabinetId);
+      fullPath = `${room?.name || ''} - ${cabinet?.name || ''} - ${locationForm.name}`;
+      parentId = locationForm.cabinetId;
+    } else if (locationForm.type === ArchiveLocationType.BOX && locationForm.roomId && locationForm.cabinetId && locationForm.shelfId) {
+      const room = rooms.find(r => r.id === locationForm.roomId);
+      const cabinet = cabinets.find(c => c.id === locationForm.cabinetId);
+      const shelf = shelves.find(s => s.id === locationForm.shelfId);
+      fullPath = `${room?.name || ''} - ${cabinet?.name || ''} - ${shelf?.name || ''} - ${locationForm.name}`;
+      parentId = locationForm.shelfId;
+    }
+
     try {
       const newLocation: Omit<ArchiveLocation, 'id'> = {
         name: locationForm.name.trim(),
         type: locationForm.type,
-        fullPath: locationForm.fullPath.trim(),
+        fullPath: fullPath.trim(),
         capacity: locationForm.capacity,
         description: locationForm.description.trim(),
         occupied: 0,
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        parentId
       };
 
       console.log('Adding location:', newLocation);
@@ -108,7 +150,16 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
       
       setLocations(prev => [...prev, { id: docRef.id, ...newLocation }]);
       setIsLocationModalOpen(false);
-      setLocationForm({ name: '', type: ArchiveLocationType.BOX, fullPath: '', capacity: 100, description: '' });
+      setLocationForm({ 
+        name: '', 
+        type: ArchiveLocationType.BOX, 
+        fullPath: '', 
+        capacity: 100, 
+        description: '',
+        roomId: '',
+        cabinetId: '',
+        shelfId: ''
+      });
       alert('تم إضافة وحدة التخزين بنجاح');
     } catch (error) {
       console.error('Error adding location:', error);
@@ -127,11 +178,20 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
 
       await updateDoc(doc(db, 'archiveLocations', editingLocation.id), updatedLocation);
       setLocations(prev => prev.map(loc => 
-        loc.id === editingLocation.id ? { ...loc, ...updatedLocation } : loc
+        loc.id === editingLocation.id ? { ...loc, ...updatedLocation } as ArchiveLocation : loc
       ));
       setIsLocationModalOpen(false);
       setEditingLocation(null);
-      setLocationForm({ name: '', type: 'box', fullPath: '', capacity: 100, description: '' });
+      setLocationForm({ 
+        name: '', 
+        type: ArchiveLocationType.BOX, 
+        fullPath: '', 
+        capacity: 100, 
+        description: '',
+        roomId: '',
+        cabinetId: '',
+        shelfId: ''
+      });
       alert('تم تحديث وحدة التخزين بنجاح');
     } catch (error) {
       console.error('Error updating location:', error);
@@ -605,7 +665,16 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
               required
               className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
               value={locationForm.type}
-              onChange={(e) => setLocationForm({ ...locationForm, type: e.target.value as ArchiveLocationType })}
+              onChange={(e) => {
+                const newType = e.target.value as ArchiveLocationType;
+                setLocationForm({ 
+                  ...locationForm, 
+                  type: newType,
+                  roomId: newType === ArchiveLocationType.ROOM ? '' : locationForm.roomId,
+                  cabinetId: newType === ArchiveLocationType.CABINET ? '' : locationForm.cabinetId,
+                  shelfId: newType === ArchiveLocationType.SHELF ? '' : locationForm.shelfId
+                });
+              }}
             >
               <option value={ArchiveLocationType.ROOM}>غرفة</option>
               <option value={ArchiveLocationType.CABINET}>دولاب</option>
@@ -613,6 +682,72 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
               <option value={ArchiveLocationType.BOX}>صندوق</option>
             </select>
           </div>
+
+          {/* Room Selection */}
+          {(locationForm.type === ArchiveLocationType.CABINET || locationForm.type === ArchiveLocationType.SHELF || locationForm.type === ArchiveLocationType.BOX) && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                الغرفة <span className="text-red-500">*</span>
+              </label>
+              <select
+                required
+                className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+                value={locationForm.roomId}
+                onChange={(e) => setLocationForm({ ...locationForm, roomId: e.target.value, cabinetId: '', shelfId: '' })}
+              >
+                <option value="">اختر الغرفة</option>
+                {rooms.map(room => (
+                  <option key={room.id} value={room.id}>{room.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Cabinet Selection */}
+          {(locationForm.type === ArchiveLocationType.SHELF || locationForm.type === ArchiveLocationType.BOX) && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                الدولاب <span className="text-red-500">*</span>
+              </label>
+              <select
+                required
+                className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+                value={locationForm.cabinetId}
+                onChange={(e) => setLocationForm({ ...locationForm, cabinetId: e.target.value, shelfId: '' })}
+                disabled={!locationForm.roomId}
+              >
+                <option value="">اختر الدولاب</option>
+                {cabinets
+                  .filter(cabinet => cabinet.parentId === locationForm.roomId)
+                  .map(cabinet => (
+                    <option key={cabinet.id} value={cabinet.id}>{cabinet.name}</option>
+                  ))}
+              </select>
+            </div>
+          )}
+
+          {/* Shelf Selection */}
+          {locationForm.type === ArchiveLocationType.BOX && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                الرف <span className="text-red-500">*</span>
+              </label>
+              <select
+                required
+                className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+                value={locationForm.shelfId}
+                onChange={(e) => setLocationForm({ ...locationForm, shelfId: e.target.value })}
+                disabled={!locationForm.cabinetId}
+              >
+                <option value="">اختر الرف</option>
+                {shelves
+                  .filter(shelf => shelf.parentId === locationForm.cabinetId)
+                  .map(shelf => (
+                    <option key={shelf.id} value={shelf.id}>{shelf.name}</option>
+                  ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
