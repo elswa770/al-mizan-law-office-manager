@@ -1,10 +1,15 @@
-import React, { useState, useMemo } from 'react';
-import { Case, Client, ArchiveLocation, ArchiveRequest, CaseStatus } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Case, Client, ArchiveLocation, ArchiveRequest, CaseStatus, ArchiveLocationType, ArchiveRequestStatus } from '../types';
 import { 
   Archive, Search, Filter, Folder, Box, FileText, Clock, User, 
   MapPin, CheckCircle, XCircle, AlertCircle, ArrowUpRight, ArrowDownLeft,
-  Plus, Trash2, Edit3, QrCode, Printer, Shield, Lock, Unlock
+  Plus, Trash2, Edit3, QrCode, Printer, Shield, Lock, Unlock, X, Save
 } from 'lucide-react';
+import { 
+  doc, setDoc, getDoc, collection, addDoc, updateDoc, deleteDoc, 
+  query, where, getDocs, onSnapshot, orderBy 
+} from 'firebase/firestore';
+import { db } from '../services/firebaseConfig';
 
 interface ArchiveProps {
   cases: Case[];
@@ -17,19 +22,222 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'archived' | 'active'>('archived');
 
-  // Mock Archive Locations
-  const [locations, setLocations] = useState<ArchiveLocation[]>([
-    { id: '1', name: 'غرفة الأرشيف A', type: 'room', fullPath: 'الدور الأرضي - غرفة A', capacity: 1000, occupied: 850 },
-    { id: '2', name: 'دولاب العقود 1', type: 'cabinet', fullPath: 'غرفة A - دولاب 1', capacity: 200, occupied: 180 },
-    { id: '3', name: 'صندوق قضايا 2023', type: 'box', fullPath: 'غرفة A - دولاب 1 - رف 3', capacity: 50, occupied: 45 },
-    { id: '4', name: 'صندوق قضايا 2024', type: 'box', fullPath: 'غرفة A - دولاب 2 - رف 1', capacity: 50, occupied: 12 },
-  ]);
+  // Firebase Data States
+  const [locations, setLocations] = useState<ArchiveLocation[]>([]);
+  const [requests, setRequests] = useState<ArchiveRequest[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock Requests
-  const [requests, setRequests] = useState<ArchiveRequest[]>([
-    { id: '1', caseId: '1', requesterId: 'user1', requestDate: '2024-02-20', status: 'pending', notes: 'للاطلاع قبل الاستئناف' },
-    { id: '2', caseId: '2', requesterId: 'user2', requestDate: '2024-02-18', status: 'approved', notes: 'مراجعة مستندات' }
-  ]);
+  // Modal States
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<ArchiveLocation | null>(null);
+  const [selectedCase, setSelectedCase] = useState<Case | null>(null);
+
+  // Form States
+  const [locationForm, setLocationForm] = useState({
+    name: '',
+    type: ArchiveLocationType.BOX,
+    fullPath: '',
+    capacity: 100,
+    description: ''
+  });
+
+  const [requestForm, setRequestForm] = useState({
+    caseId: '',
+    notes: ''
+  });
+
+  // Load data from Firebase
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Load locations
+        const locationsQuery = query(collection(db, 'archiveLocations'), orderBy('createdAt', 'desc'));
+        const locationsSnapshot = await getDocs(locationsQuery);
+        const locationsData = locationsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as ArchiveLocation));
+        setLocations(locationsData);
+
+        // Load requests
+        const requestsQuery = query(collection(db, 'archiveRequests'), orderBy('requestDate', 'desc'));
+        const requestsSnapshot = await getDocs(requestsQuery);
+        const requestsData = requestsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as ArchiveRequest));
+        setRequests(requestsData);
+      } catch (error) {
+        console.error('Error loading archive data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // --- Firebase Operations ---
+  const addLocation = async () => {
+    // Validate form
+    if (!locationForm.name.trim()) {
+      alert('يرجى إدخال اسم الوحدة');
+      return;
+    }
+    if (locationForm.capacity < 1) {
+      alert('السعة يجب أن تكون أكبر من صفر');
+      return;
+    }
+
+    try {
+      const newLocation: Omit<ArchiveLocation, 'id'> = {
+        name: locationForm.name.trim(),
+        type: locationForm.type,
+        fullPath: locationForm.fullPath.trim(),
+        capacity: locationForm.capacity,
+        description: locationForm.description.trim(),
+        occupied: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      console.log('Adding location:', newLocation);
+      const docRef = await addDoc(collection(db, 'archiveLocations'), newLocation);
+      console.log('Location added with ID:', docRef.id);
+      
+      setLocations(prev => [...prev, { id: docRef.id, ...newLocation }]);
+      setIsLocationModalOpen(false);
+      setLocationForm({ name: '', type: ArchiveLocationType.BOX, fullPath: '', capacity: 100, description: '' });
+      alert('تم إضافة وحدة التخزين بنجاح');
+    } catch (error) {
+      console.error('Error adding location:', error);
+      alert('حدث خطأ أثناء إضافة وحدة التخزين: ' + (error as Error).message);
+    }
+  };
+
+  const updateLocation = async () => {
+    if (!editingLocation) return;
+
+    try {
+      const updatedLocation = {
+        ...locationForm,
+        updatedAt: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'archiveLocations', editingLocation.id), updatedLocation);
+      setLocations(prev => prev.map(loc => 
+        loc.id === editingLocation.id ? { ...loc, ...updatedLocation } : loc
+      ));
+      setIsLocationModalOpen(false);
+      setEditingLocation(null);
+      setLocationForm({ name: '', type: 'box', fullPath: '', capacity: 100, description: '' });
+      alert('تم تحديث وحدة التخزين بنجاح');
+    } catch (error) {
+      console.error('Error updating location:', error);
+      alert('حدث خطأ أثناء تحديث وحدة التخزين');
+    }
+  };
+
+  const deleteLocation = async (locationId: string) => {
+    if (!confirm('هل أنت متأكد من حذف وحدة التخزين؟')) return;
+
+    try {
+      await deleteDoc(doc(db, 'archiveLocations', locationId));
+      setLocations(prev => prev.filter(loc => loc.id !== locationId));
+      alert('تم حذف وحدة التخزين بنجاح');
+    } catch (error) {
+      console.error('Error deleting location:', error);
+      alert('حدث خطأ أثناء حذف وحدة التخزين');
+    }
+  };
+
+  const addRequest = async () => {
+    try {
+      const newRequest: Omit<ArchiveRequest, 'id'> = {
+        caseId: requestForm.caseId,
+        requesterId: 'current-user', // Should come from auth context
+        requestDate: new Date().toISOString(),
+        status: ArchiveRequestStatus.PENDING,
+        notes: requestForm.notes
+      };
+
+      const docRef = await addDoc(collection(db, 'archiveRequests'), newRequest);
+      setRequests(prev => [...prev, { id: docRef.id, ...newRequest }]);
+      setIsRequestModalOpen(false);
+      setRequestForm({ caseId: '', notes: '' });
+      setSelectedCase(null);
+      alert('تم إرسال طلب الاستعارة بنجاح');
+    } catch (error) {
+      console.error('Error adding request:', error);
+      alert('حدث خطأ أثناء إرسال الطلب');
+    }
+  };
+
+  const updateRequestStatus = async (requestId: string, status: ArchiveRequestStatus) => {
+    try {
+      const updateData = {
+        status,
+        approvedBy: 'current-user', // Should come from auth context
+        approvedDate: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'archiveRequests', requestId), updateData);
+      setRequests(prev => prev.map(req => 
+        req.id === requestId ? { ...req, ...updateData } : req
+      ));
+      alert('تم تحديث حالة الطلب بنجاح');
+    } catch (error) {
+      console.error('Error updating request:', error);
+      alert('حدث خطأ أثناء تحديث حالة الطلب');
+    }
+  };
+
+  const archiveCasePhysically = async (caseId: string) => {
+    const caseData = cases.find(c => c.id === caseId);
+    if (!caseData) return;
+
+    const locationId = prompt('اختر وحدة التخزين (أدخل معرف الوحدة):');
+    if (!locationId) return;
+
+    const boxNumber = prompt('رقم الصندوق:');
+    if (!boxNumber) return;
+
+    try {
+      const archiveData = {
+        locationId,
+        boxNumber,
+        archivedDate: new Date().toISOString(),
+        archivedBy: 'current-user',
+        physicalCondition: 'good' as const
+      };
+
+      await updateDoc(doc(db, 'cases', caseId), { 
+        archiveData,
+        status: CaseStatus.ARCHIVED 
+      });
+
+      if (onUpdateCase) {
+        onUpdateCase({ ...caseData, archiveData, status: CaseStatus.ARCHIVED });
+      }
+
+      // Update location occupancy
+      const location = locations.find(loc => loc.id === locationId);
+      if (location) {
+        await updateDoc(doc(db, 'archiveLocations', locationId), {
+          occupied: location.occupied + 1
+        });
+        setLocations(prev => prev.map(loc => 
+          loc.id === locationId ? { ...loc, occupied: loc.occupied + 1 } : loc
+        ));
+      }
+
+      alert('تم أرشفة القضية فيزيائياً بنجاح');
+    } catch (error) {
+      console.error('Error archiving case:', error);
+      alert('حدث خطأ أثناء أرشفة القضية');
+    }
+  };
 
   // Filtered Data
   const filteredCases = useMemo(() => {
@@ -115,11 +323,17 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
             </div>
 
             <div className="flex gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
-              <button className="flex-1 py-1.5 bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors">
+              <button 
+                onClick={() => window.open(`/cases/${c.id}`, '_blank')}
+                className="flex-1 py-1.5 bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+              >
                 عرض الملف
               </button>
               {!c.archiveData && (
-                <button className="flex-1 py-1.5 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 rounded text-xs font-bold hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
+                <button 
+                  onClick={() => archiveCasePhysically(c.id)}
+                  className="flex-1 py-1.5 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 rounded text-xs font-bold hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                >
                   أرشفة فيزيائية
                 </button>
               )}
@@ -171,7 +385,14 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
           <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <MapPin className="w-5 h-5 text-slate-500" /> وحدات التخزين
           </h3>
-          <button className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 flex items-center gap-1 shadow-sm">
+          <button 
+            onClick={() => {
+              setEditingLocation(null);
+              setLocationForm({ name: '', type: ArchiveLocationType.BOX, fullPath: '', capacity: 100, description: '' });
+              setIsLocationModalOpen(true);
+            }}
+            className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 flex items-center gap-1 shadow-sm"
+          >
             <Plus className="w-3 h-3" /> وحدة جديدة
           </button>
         </div>
@@ -212,8 +433,37 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
                   </td>
                   <td className="p-4">
                     <div className="flex gap-2">
-                      <button className="p-1.5 text-slate-400 hover:text-indigo-600 bg-slate-50 dark:bg-slate-700 rounded"><Edit3 className="w-4 h-4"/></button>
-                      <button className="p-1.5 text-slate-400 hover:text-blue-600 bg-slate-50 dark:bg-slate-700 rounded"><Printer className="w-4 h-4"/></button>
+                      <button 
+                        onClick={() => {
+                          setEditingLocation(loc);
+                          setLocationForm({
+                            name: loc.name,
+                            type: loc.type,
+                            fullPath: loc.fullPath,
+                            capacity: loc.capacity,
+                            description: loc.description || ''
+                          });
+                          setIsLocationModalOpen(true);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 bg-slate-50 dark:bg-slate-700 rounded"
+                        title="تعديل الوحدة"
+                      >
+                        <Edit3 className="w-4 h-4"/>
+                      </button>
+                      <button 
+                        onClick={() => deleteLocation(loc.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 bg-slate-50 dark:bg-slate-700 rounded"
+                        title="حذف الوحدة"
+                      >
+                        <Trash2 className="w-4 h-4"/>
+                      </button>
+                      <button 
+                        onClick={() => window.print()}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 bg-slate-50 dark:bg-slate-700 rounded"
+                        title="طباعة الباركود"
+                      >
+                        <Printer className="w-4 h-4"/>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -273,12 +523,31 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
                     <td className="p-4">
                       {req.status === 'pending' && (
                         <div className="flex gap-2">
-                          <button className="px-3 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700">موافقة</button>
-                          <button className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold hover:bg-red-700">رفض</button>
+                          <button 
+                            onClick={() => updateRequestStatus(req.id, ArchiveRequestStatus.APPROVED)}
+                            className="px-3 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700"
+                          >
+                            موافقة
+                          </button>
+                          <button 
+                            onClick={() => updateRequestStatus(req.id, ArchiveRequestStatus.REJECTED)}
+                            className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold hover:bg-red-700"
+                          >
+                            رفض
+                          </button>
                         </div>
                       )}
                       {req.status === 'approved' && (
-                        <button className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1">
+                        <button 
+                          onClick={() => {
+                            // Mark as returned
+                            updateDoc(doc(db, 'archiveRequests', req.id), {
+                              actualReturnDate: new Date().toISOString()
+                            });
+                            alert('تم تسجيل استلام الملف بنجاح');
+                          }}
+                          className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1"
+                        >
                           <ArrowDownLeft className="w-3 h-3" /> استلام
                         </button>
                       )}
@@ -289,6 +558,120 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+
+  // --- Modals ---
+  const renderLocationModal = () => (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md animate-in zoom-in-95 duration-200">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+          <h3 className="font-bold text-lg text-slate-800 dark:text-white">
+            {editingLocation ? 'تعديل وحدة التخزين' : 'إضافة وحدة تخزين جديدة'}
+          </h3>
+          <button onClick={() => setIsLocationModalOpen(false)}>
+            <X className="w-5 h-5 text-slate-400" />
+          </button>
+        </div>
+        
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          if (editingLocation) {
+            updateLocation();
+          } else {
+            addLocation();
+          }
+        }} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              اسم الوحدة <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+              value={locationForm.name}
+              onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
+              placeholder="مثال: صندوق قضايا 2024"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              النوع <span className="text-red-500">*</span>
+            </label>
+            <select
+              required
+              className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+              value={locationForm.type}
+              onChange={(e) => setLocationForm({ ...locationForm, type: e.target.value as ArchiveLocationType })}
+            >
+              <option value={ArchiveLocationType.ROOM}>غرفة</option>
+              <option value={ArchiveLocationType.CABINET}>دولاب</option>
+              <option value={ArchiveLocationType.SHELF}>رف</option>
+              <option value={ArchiveLocationType.BOX}>صندوق</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              المسار الكامل
+            </label>
+            <input
+              type="text"
+              className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+              value={locationForm.fullPath}
+              onChange={(e) => setLocationForm({ ...locationForm, fullPath: e.target.value })}
+              placeholder="مثال: الدور الأرضي - غرفة A - دولاب 1"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              السعة <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              required
+              min="1"
+              className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+              value={locationForm.capacity}
+              onChange={(e) => setLocationForm({ ...locationForm, capacity: parseInt(e.target.value) })}
+              placeholder="عدد الملفات"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              وصف (اختياري)
+            </label>
+            <textarea
+              className="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white"
+              value={locationForm.description}
+              onChange={(e) => setLocationForm({ ...locationForm, description: e.target.value })}
+              placeholder="ملاحظات إضافية..."
+              rows={3}
+            />
+          </div>
+
+          <div className="pt-2 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setIsLocationModalOpen(false)}
+              className="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold shadow-md flex items-center justify-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              {editingLocation ? 'تحديث' : 'إضافة'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -342,6 +725,9 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
         {activeTab === 'physical' && renderPhysicalArchive()}
         {activeTab === 'requests' && renderRequests()}
       </div>
+
+      {/* Modals */}
+      {isLocationModalOpen && renderLocationModal()}
     </div>
   );
 };
