@@ -3,7 +3,7 @@ import { Case, Client, ArchiveLocation, ArchiveRequest, CaseStatus, ArchiveLocat
 import { 
   Archive, Search, Filter, Folder, Box, FileText, Clock, User, 
   MapPin, CheckCircle, XCircle, AlertCircle, ArrowUpRight, ArrowDownLeft,
-  Plus, Trash2, Edit3, QrCode, Printer, Shield, Lock, Unlock, X, Save
+  Plus, Trash2, Edit3, QrCode, Printer, Shield, Lock, Unlock, X, Save, ChevronDown
 } from 'lucide-react';
 import { 
   doc, setDoc, getDoc, collection, addDoc, updateDoc, deleteDoc, 
@@ -168,7 +168,7 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
         occupied: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        parentId
+        ...(parentId && { parentId })
       };
 
       console.log('Adding location:', newLocation);
@@ -481,6 +481,48 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
     });
   };
 
+  // State for collapsible hierarchy
+  const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set());
+  const [expandedCabinets, setExpandedCabinets] = useState<Set<string>>(new Set());
+  const [expandedShelves, setExpandedShelves] = useState<Set<string>>(new Set());
+
+  // Toggle functions
+  const toggleRoom = (roomId: string) => {
+    setExpandedRooms(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(roomId)) {
+        newSet.delete(roomId);
+      } else {
+        newSet.add(roomId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleCabinet = (cabinetId: string) => {
+    setExpandedCabinets(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(cabinetId)) {
+        newSet.delete(cabinetId);
+      } else {
+        newSet.add(cabinetId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleShelf = (shelfId: string) => {
+    setExpandedShelves(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(shelfId)) {
+        newSet.delete(shelfId);
+      } else {
+        newSet.add(shelfId);
+      }
+      return newSet;
+    });
+  };
+
   // Filtered Data
   const filteredCases = useMemo(() => {
     return cases.filter(c => {
@@ -498,7 +540,7 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
   const archivedCount = cases.filter(c => c.status === CaseStatus.CLOSED || c.status === CaseStatus.ARCHIVED || !!c.archiveData).length;
   const physicalFilesCount = cases.filter(c => c.archiveData).length;
 
-  // Organize locations hierarchically
+  // Organize locations hierarchically with collapsible functionality
   const getHierarchicalLocations = () => {
     const rooms = locations.filter(loc => loc.type === ArchiveLocationType.ROOM);
     const cabinets = locations.filter(loc => loc.type === ArchiveLocationType.CABINET);
@@ -510,58 +552,85 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
       indent: string;
       occupied: number;
       displayOccupancy: string;
+      hasChildren: boolean;
+      isExpanded: boolean;
+      toggleFunction: () => void;
     })[] = [];
 
     rooms.forEach(room => {
       const roomCabinets = cabinets.filter(c => c.parentId === room.id);
       const roomOccupancy = roomCabinets.length;
+      const hasChildren = roomCabinets.length > 0;
       
       hierarchicalList.push({ 
         ...room, 
         level: 0, 
         indent: '',
         occupied: roomOccupancy,
-        displayOccupancy: `${roomOccupancy}/${room.capacity} دولاب`
+        displayOccupancy: `${roomOccupancy}/${room.capacity} دولاب`,
+        hasChildren,
+        isExpanded: expandedRooms.has(room.id),
+        toggleFunction: () => toggleRoom(room.id)
       });
       
-      roomCabinets.forEach(cabinet => {
-        const cabinetShelves = shelves.filter(s => s.parentId === cabinet.id);
-        const cabinetOccupancy = cabinetShelves.length;
-        
-        hierarchicalList.push({ 
-          ...cabinet, 
-          level: 1, 
-          indent: '└─ ',
-          occupied: cabinetOccupancy,
-          displayOccupancy: `${cabinetOccupancy}/${cabinet.capacity} رف`
-        });
-        
-        cabinetShelves.forEach(shelf => {
-          const shelfBoxes = boxes.filter(b => b.parentId === shelf.id);
-          const shelfOccupancy = shelfBoxes.length;
+      // Only show cabinets if room is expanded
+      if (expandedRooms.has(room.id)) {
+        roomCabinets.forEach(cabinet => {
+          const cabinetShelves = shelves.filter(s => s.parentId === cabinet.id);
+          const cabinetOccupancy = cabinetShelves.length;
+          const hasChildren = cabinetShelves.length > 0;
           
           hierarchicalList.push({ 
-            ...shelf, 
-            level: 2, 
-            indent: '   └─ ',
-            occupied: shelfOccupancy,
-            displayOccupancy: `${shelfOccupancy}/${shelf.capacity} صندوق`
+            ...cabinet, 
+            level: 1, 
+            indent: '└─ ',
+            occupied: cabinetOccupancy,
+            displayOccupancy: `${cabinetOccupancy}/${cabinet.capacity} رف`,
+            hasChildren,
+            isExpanded: expandedCabinets.has(cabinet.id),
+            toggleFunction: () => toggleCabinet(cabinet.id)
           });
           
-          shelfBoxes.forEach(box => {
-            // Count actual files in this box
-            const filesInBox = cases.filter(c => c.archiveData?.locationId === box.id).length;
-            
-            hierarchicalList.push({ 
-              ...box, 
-              level: 3, 
-              indent: '      └─ ',
-              occupied: filesInBox,
-              displayOccupancy: `${filesInBox}/${box.capacity} ملف`
+          // Only show shelves if cabinet is expanded
+          if (expandedCabinets.has(cabinet.id)) {
+            cabinetShelves.forEach(shelf => {
+              const shelfBoxes = boxes.filter(b => b.parentId === shelf.id);
+              const shelfOccupancy = shelfBoxes.length;
+              const hasChildren = shelfBoxes.length > 0;
+              
+              hierarchicalList.push({ 
+                ...shelf, 
+                level: 2, 
+                indent: '   └─ ',
+                occupied: shelfOccupancy,
+                displayOccupancy: `${shelfOccupancy}/${shelf.capacity} صندوق`,
+                hasChildren,
+                isExpanded: expandedShelves.has(shelf.id),
+                toggleFunction: () => toggleShelf(shelf.id)
+              });
+              
+              // Only show boxes if shelf is expanded
+              if (expandedShelves.has(shelf.id)) {
+                shelfBoxes.forEach(box => {
+                  // Count actual files in this box
+                  const filesInBox = cases.filter(c => c.archiveData?.locationId === box.id).length;
+                  
+                  hierarchicalList.push({ 
+                    ...box, 
+                    level: 3, 
+                    indent: '      └─ ',
+                    occupied: filesInBox,
+                    displayOccupancy: `${filesInBox}/${box.capacity} ملف`,
+                    hasChildren: false,
+                    isExpanded: false,
+                    toggleFunction: () => {}
+                  });
+                });
+              }
             });
-          });
+          }
         });
-      });
+      }
     });
 
     return hierarchicalList;
@@ -750,6 +819,15 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
               {getHierarchicalLocations().map(loc => (
                 <tr key={loc.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-slate-800 dark:text-slate-200 ${loc.level > 0 ? 'bg-slate-50/50 dark:bg-slate-800/50' : ''}`}>
                   <td className="p-4 font-bold flex items-center gap-2">
+                    {loc.hasChildren && (
+                      <button 
+                        onClick={loc.toggleFunction}
+                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                        title={loc.isExpanded ? "طي" : "توسيع"}
+                      >
+                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${loc.isExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                    )}
                     <span className={`${loc.level > 0 ? 'text-slate-400' : ''}`}>{loc.indent}</span>
                     {loc.type === 'room' ? <MapPin className="w-4 h-4 text-slate-400"/> : loc.type === 'box' ? <Box className="w-4 h-4 text-amber-500"/> : <Folder className="w-4 h-4 text-blue-500"/>}
                     <span className={`${loc.level > 0 ? 'text-sm' : ''}`}>{loc.name}</span>
