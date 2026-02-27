@@ -505,22 +505,60 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
     const shelves = locations.filter(loc => loc.type === ArchiveLocationType.SHELF);
     const boxes = locations.filter(loc => loc.type === ArchiveLocationType.BOX);
 
-    const hierarchicalList: (ArchiveLocation & { level: number; indent: string })[] = [];
+    const hierarchicalList: (ArchiveLocation & { 
+      level: number; 
+      indent: string;
+      occupied: number;
+      displayOccupancy: string;
+    })[] = [];
 
     rooms.forEach(room => {
-      hierarchicalList.push({ ...room, level: 0, indent: '' });
-      
       const roomCabinets = cabinets.filter(c => c.parentId === room.id);
+      const roomOccupancy = roomCabinets.length;
+      
+      hierarchicalList.push({ 
+        ...room, 
+        level: 0, 
+        indent: '',
+        occupied: roomOccupancy,
+        displayOccupancy: `${roomOccupancy}/${room.capacity} دولاب`
+      });
+      
       roomCabinets.forEach(cabinet => {
-        hierarchicalList.push({ ...cabinet, level: 1, indent: '└─ ' });
-        
         const cabinetShelves = shelves.filter(s => s.parentId === cabinet.id);
+        const cabinetOccupancy = cabinetShelves.length;
+        
+        hierarchicalList.push({ 
+          ...cabinet, 
+          level: 1, 
+          indent: '└─ ',
+          occupied: cabinetOccupancy,
+          displayOccupancy: `${cabinetOccupancy}/${cabinet.capacity} رف`
+        });
+        
         cabinetShelves.forEach(shelf => {
-          hierarchicalList.push({ ...shelf, level: 2, indent: '   └─ ' });
-          
           const shelfBoxes = boxes.filter(b => b.parentId === shelf.id);
+          const shelfOccupancy = shelfBoxes.length;
+          
+          hierarchicalList.push({ 
+            ...shelf, 
+            level: 2, 
+            indent: '   └─ ',
+            occupied: shelfOccupancy,
+            displayOccupancy: `${shelfOccupancy}/${shelf.capacity} صندوق`
+          });
+          
           shelfBoxes.forEach(box => {
-            hierarchicalList.push({ ...box, level: 3, indent: '      └─ ' });
+            // Count actual files in this box
+            const filesInBox = cases.filter(c => c.archiveData?.locationId === box.id).length;
+            
+            hierarchicalList.push({ 
+              ...box, 
+              level: 3, 
+              indent: '      └─ ',
+              occupied: filesInBox,
+              displayOccupancy: `${filesInBox}/${box.capacity} ملف`
+            });
           });
         });
       });
@@ -732,10 +770,10 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
                       <div className="w-24 bg-slate-200 dark:bg-slate-600 h-2 rounded-full overflow-hidden">
                         <div 
                           className={`h-full ${loc.occupied / loc.capacity > 0.9 ? 'bg-red-500' : 'bg-green-500'}`} 
-                          style={{width: `${(loc.occupied / loc.capacity) * 100}%`}}
+                          style={{width: `${Math.min((loc.occupied / loc.capacity) * 100, 100)}%`}}
                         ></div>
                       </div>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{loc.occupied}/{loc.capacity}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">{loc.displayOccupancy}</span>
                     </div>
                   </td>
                   <td className="p-4">
