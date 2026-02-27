@@ -145,9 +145,23 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
          plan: editActionPlan
        };
 
+       // Check if status is being changed to CLOSED and add closedAt
+       const isClosingCase = editCaseData.status === CaseStatus.CLOSED && currentCase.status !== CaseStatus.CLOSED;
+       const isReopeningCase = editCaseData.status === CaseStatus.OPEN && currentCase.status === CaseStatus.CLOSED;
+       
+       const updatedCaseData = {
+         ...editCaseData,
+         ...(isClosingCase && {
+           closedAt: new Date().toISOString()
+         }),
+         ...(isReopeningCase && {
+           closedAt: undefined
+         })
+       };
+
        onUpdateCase({ 
          ...currentCase, 
-         ...editCaseData, 
+         ...updatedCaseData, 
          opponents: updatedOpponents,
          strategy: updatedStrategy
        } as Case);

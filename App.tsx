@@ -19,6 +19,7 @@ const AIAssistant = lazy(() => import('./pages/AIAssistant'));
 const DocumentGenerator = lazy(() => import('./pages/DocumentGenerator'));
 const LegalReferences = lazy(() => import('./pages/LegalReferences'));
 const Calculators = lazy(() => import('./pages/Calculators'));
+const Archive = lazy(() => import('./pages/Archive'));
 import { Hearing, Case, Client, HearingStatus, Task, ActivityLog, AppUser, PermissionLevel, LegalReference } from './types';
 import { auth } from './services/firebaseConfig';
 import { ShieldAlert } from 'lucide-react';
@@ -48,6 +49,7 @@ const getDefaultPermissions = () => [
   { moduleId: 'hearings', access: 'read' as const },
   { moduleId: 'tasks', access: 'read' as const },
   { moduleId: 'documents', access: 'read' as const },
+  { moduleId: 'archive', access: 'read' as const }, // Added archive permission
   { moduleId: 'fees', access: 'read' as const },
   { moduleId: 'expenses', access: 'none' as const },
   { moduleId: 'reports', access: 'none' as const },
@@ -995,6 +997,22 @@ function App() {
               references={references}
               onAddReference={handleAddReference}
               readOnly={isReadOnly('references')}
+            />
+          </Suspense>
+        );
+      case 'archive':
+        return (
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            </div>
+          }>
+            <Archive 
+              cases={cases}
+              clients={clients}
+              onUpdateCase={handleUpdateCase}
+              onNavigate={setCurrentPage}
+              onCaseClick={handleCaseClick}
             />
           </Suspense>
         );

@@ -36,6 +36,25 @@ export enum ClientStatus {
   INACTIVE = 'غير نشط'
 }
 
+export enum ArchiveStatus {
+  DIGITAL = 'رقمي',
+  PHYSICAL = 'فيزيائي',
+  BOTH = 'رقمي وفيزيائي'
+}
+
+export enum ArchiveRequestStatus {
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected'
+}
+
+export enum ArchiveLocationType {
+  ROOM = 'room',
+  CABINET = 'cabinet',
+  SHELF = 'shelf',
+  BOX = 'box'
+}
+
 export enum CourtType {
   FAMILY_COURT = 'محكمة الأسرة',
   CRIMINAL = 'جنايات',
@@ -215,6 +234,8 @@ export interface Case {
   filingDate?: string;
   hearings?: Hearing[];
   deadlines?: string[];
+  archiveData?: ArchiveData; // Added archive data field
+  closedAt?: string; // تاريخ الإغلاق الفعلي
 }
 
 export interface HearingExpenses {
@@ -426,6 +447,49 @@ export interface ResourceUsage {
   memory: number; // percentage
   storage: number; // percentage used
   uptime: string;
+}
+
+// Archive Management Interfaces
+export interface ArchiveLocation {
+  id: string;
+  name: string;
+  type: ArchiveLocationType;
+  fullPath: string;
+  capacity: number;
+  occupied: number;
+  description?: string;
+  qrCode?: string;
+  createdAt: string;
+  updatedAt: string;
+  parentId?: string; // For hierarchical relationship
+}
+
+export interface ArchiveRequest {
+  id: string;
+  caseId: string;
+  requesterId: string;
+  requestDate: string;
+  status: ArchiveRequestStatus;
+  notes?: string;
+  approvedBy?: string;
+  approvedDate?: string;
+  expectedReturnDate?: string;
+  actualReturnDate?: string;
+}
+
+export interface ArchiveData {
+  locationId: string;
+  boxNumber: string;
+  archivedDate: string;
+  archivedBy: string;
+  physicalCondition: 'good' | 'fair' | 'poor';
+  notes?: string;
+  qrCode?: string;
+}
+
+// Extend Case interface to include archive data
+export interface CaseWithArchive extends Case {
+  archiveData?: ArchiveData;
 }
 
 export interface MaintenanceSettings {

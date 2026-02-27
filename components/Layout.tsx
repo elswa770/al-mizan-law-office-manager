@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutDashboard, Briefcase, Users, Gavel, FileText, BrainCircuit, LogOut, Menu, Bell, Calendar, X, Clock, AlertTriangle, CheckCircle, ChevronRight, ChevronLeft, Settings, BarChart3, Wallet, File, Search, Library, PlusCircle, Shield, CheckSquare, Map, Calculator, PenTool } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, Gavel, FileText, BrainCircuit, LogOut, Menu, Bell, Calendar, X, Clock, AlertTriangle, CheckCircle, ChevronRight, ChevronLeft, Settings, BarChart3, Wallet, File, Search, Library, PlusCircle, Shield, CheckSquare, Map, Calculator, PenTool, Archive } from 'lucide-react';
 import { AppUser } from '../types';
 import { AuthUser } from '../services/authService';
 
@@ -114,6 +114,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activePage, onNavigate, notif
       title: 'المكتب والإدارة',
       items: [
         { id: 'documents', label: 'المستندات', icon: File },
+        { id: 'archive', label: 'إدارة الأرشيف', icon: Archive },
         { id: 'fees', label: 'الأتعاب والمصروفات', icon: Wallet },
         { id: 'reports', label: 'التقارير', icon: BarChart3 },
       ]
@@ -128,7 +129,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activePage, onNavigate, notif
 
   // Helper to check permissions
   const checkPermission = (moduleId: string): boolean => {
-    if (!currentUser) return false;
+    if (!currentUser || !currentUser.permissions) return false;
     // Special handling for 'fees'
     if (moduleId === 'fees') {
        const hasFees = currentUser.permissions.find(p => p.moduleId === 'fees')?.access !== 'none';
@@ -157,6 +158,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activePage, onNavigate, notif
       case 'locations': return 'دليل المحاكم والجهات';
       case 'calculators': return 'الحاسبات القانونية';
       case 'generator': return 'منشئ العقود والمحررات';
+      case 'archive': return 'إدارة الأرشيف';
       default: 
         return navGroups.flatMap(g => g.items).find(n => n.id === activePage)?.label || 'الميزان';
     }

@@ -466,7 +466,7 @@ const Settings: React.FC<SettingsProps> = ({
         const checks = [];
         
         // فحص الإصدار الحالي
-        let currentVersion = '1.0.0';
+        let currentVersion = '4.0.0';
         try {
           const response = await fetch('/package.json');
           const packageData = await response.json();

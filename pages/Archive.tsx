@@ -15,12 +15,39 @@ interface ArchiveProps {
   cases: Case[];
   clients: Client[];
   onUpdateCase?: (updatedCase: Case) => void;
+  onNavigate?: (page: string) => void;
+  onCaseClick?: (caseId: string) => void;
 }
 
-const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) => {
+const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onNavigate, onCaseClick }) => {
   const [activeTab, setActiveTab] = useState<'digital' | 'physical' | 'requests'>('digital');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'archived' | 'active'>('archived');
+
+  // Function to update case status with closed date
+  const updateCaseStatus = async (caseId: string, newStatus: CaseStatus) => {
+    if (!onUpdateCase) return;
+    
+    const targetCase = cases.find(c => c.id === caseId);
+    if (!targetCase) return;
+
+    const updatedCase: Case = {
+      ...targetCase,
+      status: newStatus,
+      ...(newStatus === CaseStatus.CLOSED && {
+        closedAt: new Date().toISOString()
+      })
+    };
+
+    try {
+      await updateDoc(doc(db, 'cases', caseId), updatedCase);
+      onUpdateCase(updatedCase);
+      alert(`تم تحديث حالة القضية إلى "${newStatus === CaseStatus.CLOSED ? 'مغلقة' : 'مؤرشفة'}" بنجاح`);
+    } catch (error) {
+      console.error('Error updating case status:', error);
+      alert('حدث خطأ أثناء تحديث حالة القضية');
+    }
+  };
 
   // Firebase Data States
   const [locations, setLocations] = useState<ArchiveLocation[]>([]);
@@ -148,6 +175,19 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
       const docRef = await addDoc(collection(db, 'archiveLocations'), newLocation);
       console.log('Location added with ID:', docRef.id);
       
+      // Update parent occupancy
+      if (parentId) {
+        await updateDoc(doc(db, 'archiveLocations', parentId), {
+          occupied: (locations.find(l => l.id === parentId)?.occupied || 0) + 1,
+          updatedAt: new Date().toISOString()
+        });
+        
+        // Update local state for parent
+        setLocations(prev => prev.map(loc => 
+          loc.id === parentId ? { ...loc, occupied: loc.occupied + 1 } : loc
+        ));
+      }
+      
       setLocations(prev => [...prev, { id: docRef.id, ...newLocation }]);
       setIsLocationModalOpen(false);
       setLocationForm({ 
@@ -252,51 +292,193 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
       alert('حدث خطأ أثناء تحديث حالة الطلب');
     }
   };
-
   const archiveCasePhysically = async (caseId: string) => {
     const caseData = cases.find(c => c.id === caseId);
     if (!caseData) return;
 
-    const locationId = prompt('اختر وحدة التخزين (أدخل معرف الوحدة):');
-    if (!locationId) return;
-
-    const boxNumber = prompt('رقم الصندوق:');
-    if (!boxNumber) return;
-
-    try {
-      const archiveData = {
-        locationId,
-        boxNumber,
-        archivedDate: new Date().toISOString(),
-        archivedBy: 'current-user',
-        physicalCondition: 'good' as const
-      };
-
-      await updateDoc(doc(db, 'cases', caseId), { 
-        archiveData,
-        status: CaseStatus.ARCHIVED 
-      });
-
-      if (onUpdateCase) {
-        onUpdateCase({ ...caseData, archiveData, status: CaseStatus.ARCHIVED });
+    // Create modal for hierarchical location selection
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="bg-white dark:bg-slate-800 rounded-xl shadow-xl w-full max-w-md p-6">
+        <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">أرشفة القضية فيزيائياً</h3>
+        
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">الغرفة</label>
+            <select id="roomSelect" class="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white">
+              <option value="">اختر الغرفة</option>
+              ${rooms.map(room => `<option value="${room.id}">${room.name}</option>`).join('')}
+            </select>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">الدولاب</label>
+            <select id="cabinetSelect" class="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white" disabled>
+              <option value="">اختر الدولاب</option>
+            </select>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">الرف</label>
+            <select id="shelfSelect" class="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white" disabled>
+              <option value="">اختر الرف</option>
+            </select>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">الصندوق</label>
+            <select id="boxSelect" class="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white" disabled>
+              <option value="">اختر الصندوق</option>
+            </select>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">رقم الملف في الصندوق</label>
+            <input type="text" id="fileNumber" class="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white" placeholder="مثال: 1-25">
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">ملاحظات (اختياري)</label>
+            <textarea id="archiveNotes" class="w-full border border-slate-300 dark:border-slate-600 p-2 rounded-lg bg-white dark:bg-slate-700 dark:text-white" rows="3" placeholder="ملاحظات عن حالة الأرشفة..."></textarea>
+          </div>
+        </div>
+        
+        <div class="flex gap-3 mt-6">
+          <button id="cancelBtn" class="flex-1 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 font-bold">إلغاء</button>
+          <button id="archiveBtn" class="flex-1 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold shadow-md">أرشفة</button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const roomSelect = modal.querySelector('#roomSelect') as HTMLSelectElement;
+    const cabinetSelect = modal.querySelector('#cabinetSelect') as HTMLSelectElement;
+    const shelfSelect = modal.querySelector('#shelfSelect') as HTMLSelectElement;
+    const boxSelect = modal.querySelector('#boxSelect') as HTMLSelectElement;
+    const fileNumberInput = modal.querySelector('#fileNumber') as HTMLInputElement;
+    const archiveNotesInput = modal.querySelector('#archiveNotes') as HTMLTextAreaElement;
+    const cancelBtn = modal.querySelector('#cancelBtn') as HTMLButtonElement;
+    const archiveBtn = modal.querySelector('#archiveBtn') as HTMLButtonElement;
+    
+    // Handle room selection
+    roomSelect.addEventListener('change', (e) => {
+      const roomId = (e.target as HTMLSelectElement).value;
+      cabinetSelect.innerHTML = '<option value="">اختر الدولاب</option>';
+      shelfSelect.innerHTML = '<option value="">اختر الرف</option>';
+      boxSelect.innerHTML = '<option value="">اختر الصندوق</option>';
+      
+      if (roomId) {
+        const roomCabinets = cabinets.filter(c => c.parentId === roomId);
+        cabinetSelect.innerHTML = '<option value="">اختر الدولاب</option>' + 
+          roomCabinets.map(cabinet => `<option value="${cabinet.id}">${cabinet.name}</option>`).join('');
+        cabinetSelect.disabled = false;
+      } else {
+        cabinetSelect.disabled = true;
+        shelfSelect.disabled = true;
+        boxSelect.disabled = true;
       }
+    });
+    
+    // Handle cabinet selection
+    cabinetSelect.addEventListener('change', (e) => {
+      const cabinetId = (e.target as HTMLSelectElement).value;
+      shelfSelect.innerHTML = '<option value="">اختر الرف</option>';
+      boxSelect.innerHTML = '<option value="">اختر الصندوق</option>';
+      
+      if (cabinetId) {
+        const cabinetShelves = shelves.filter(s => s.parentId === cabinetId);
+        shelfSelect.innerHTML = '<option value="">اختر الرف</option>' + 
+          cabinetShelves.map(shelf => `<option value="${shelf.id}">${shelf.name}</option>`).join('');
+        shelfSelect.disabled = false;
+      } else {
+        shelfSelect.disabled = true;
+        boxSelect.disabled = true;
+      }
+    });
+    
+    // Handle shelf selection
+    shelfSelect.addEventListener('change', (e) => {
+      const shelfId = (e.target as HTMLSelectElement).value;
+      boxSelect.innerHTML = '<option value="">اختر الصندوق</option>';
+      
+      if (shelfId) {
+        const shelfBoxes = locations.filter(l => l.type === ArchiveLocationType.BOX && l.parentId === shelfId);
+        boxSelect.innerHTML = '<option value="">اختر الصندوق</option>' + 
+          shelfBoxes.map(box => `<option value="${box.id}">${box.name}</option>`).join('');
+        boxSelect.disabled = false;
+      } else {
+        boxSelect.disabled = true;
+      }
+    });
+    
+    // Handle cancel
+    cancelBtn.addEventListener('click', () => {
+      document.body.removeChild(modal);
+    });
+    
+    // Handle archive
+    archiveBtn.addEventListener('click', async () => {
+      const selectedBoxId = boxSelect.value;
+      const fileNumber = fileNumberInput.value.trim();
+      const archiveNotes = archiveNotesInput.value.trim();
+      
+      if (!selectedBoxId) {
+        alert('يرجى اختيار الصندوق');
+        return;
+      }
+      
+      if (!fileNumber) {
+        alert('يرجى إدخال رقم الملف في الصندوق');
+        return;
+      }
+      
+      try {
+        const selectedBox = locations.find(l => l.id === selectedBoxId);
+        const archiveData = {
+          locationId: selectedBoxId,
+          locationName: selectedBox?.fullPath || '',
+          fileNumber,
+          boxNumber: fileNumber, // إضافة boxNumber المطلوب
+          archiveNotes,
+          archivedDate: new Date().toISOString(),
+          archivedBy: 'current-user',
+          physicalCondition: 'good' as const
+        };
 
-      // Update location occupancy
-      const location = locations.find(loc => loc.id === locationId);
-      if (location) {
-        await updateDoc(doc(db, 'archiveLocations', locationId), {
-          occupied: location.occupied + 1
+        await updateDoc(doc(db, 'cases', caseId), { 
+          archiveData,
+          status: CaseStatus.ARCHIVED 
         });
-        setLocations(prev => prev.map(loc => 
-          loc.id === locationId ? { ...loc, occupied: loc.occupied + 1 } : loc
-        ));
-      }
 
-      alert('تم أرشفة القضية فيزيائياً بنجاح');
-    } catch (error) {
-      console.error('Error archiving case:', error);
-      alert('حدث خطأ أثناء أرشفة القضية');
-    }
+        // Update box occupancy
+        if (selectedBox) {
+          await updateDoc(doc(db, 'archiveLocations', selectedBoxId), {
+            occupied: selectedBox.occupied + 1,
+            updatedAt: new Date().toISOString()
+          });
+        }
+
+        document.body.removeChild(modal);
+        alert('تم أرشفة القضية بنجاح');
+        
+        // Update local state to reflect changes
+        if (onUpdateCase) {
+          const updatedCase = cases.find(c => c.id === caseId);
+          if (updatedCase) {
+            onUpdateCase({
+              ...updatedCase,
+              archiveData,
+              status: CaseStatus.ARCHIVED
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error archiving case:', error);
+        alert('حدث خطأ أثناء أرشفة القضية');
+      }
+    });
   };
 
   // Filtered Data
@@ -304,16 +486,48 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
     return cases.filter(c => {
       const matchesSearch = c.title.includes(searchTerm) || c.caseNumber.includes(searchTerm) || c.clientName.includes(searchTerm);
       const isArchived = c.status === CaseStatus.CLOSED || c.status === CaseStatus.ARCHIVED;
+      const hasPhysicalArchive = !!c.archiveData;
       
-      if (filterStatus === 'archived' && !isArchived) return false;
-      if (filterStatus === 'active' && isArchived) return false;
+      if (filterStatus === 'archived' && !isArchived && !hasPhysicalArchive) return false;
+      if (filterStatus === 'active' && isArchived && !hasPhysicalArchive) return false;
       
       return matchesSearch;
     });
   }, [cases, searchTerm, filterStatus]);
 
-  const archivedCount = cases.filter(c => c.status === CaseStatus.CLOSED || c.status === CaseStatus.ARCHIVED).length;
+  const archivedCount = cases.filter(c => c.status === CaseStatus.CLOSED || c.status === CaseStatus.ARCHIVED || !!c.archiveData).length;
   const physicalFilesCount = cases.filter(c => c.archiveData).length;
+
+  // Organize locations hierarchically
+  const getHierarchicalLocations = () => {
+    const rooms = locations.filter(loc => loc.type === ArchiveLocationType.ROOM);
+    const cabinets = locations.filter(loc => loc.type === ArchiveLocationType.CABINET);
+    const shelves = locations.filter(loc => loc.type === ArchiveLocationType.SHELF);
+    const boxes = locations.filter(loc => loc.type === ArchiveLocationType.BOX);
+
+    const hierarchicalList: (ArchiveLocation & { level: number; indent: string })[] = [];
+
+    rooms.forEach(room => {
+      hierarchicalList.push({ ...room, level: 0, indent: '' });
+      
+      const roomCabinets = cabinets.filter(c => c.parentId === room.id);
+      roomCabinets.forEach(cabinet => {
+        hierarchicalList.push({ ...cabinet, level: 1, indent: '└─ ' });
+        
+        const cabinetShelves = shelves.filter(s => s.parentId === cabinet.id);
+        cabinetShelves.forEach(shelf => {
+          hierarchicalList.push({ ...shelf, level: 2, indent: '   └─ ' });
+          
+          const shelfBoxes = boxes.filter(b => b.parentId === shelf.id);
+          shelfBoxes.forEach(box => {
+            hierarchicalList.push({ ...box, level: 3, indent: '      └─ ' });
+          });
+        });
+      });
+    });
+
+    return hierarchicalList;
+  };
 
   // --- Render Functions ---
 
@@ -355,6 +569,27 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
               {c.archiveData ? 'مؤرشف فيزيائياً' : 'رقمي فقط'}
             </div>
             
+            {/* Archive Location Display */}
+            {c.archiveData && (
+              <div className="mt-2 p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                <div className="flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                  <Archive className="w-4 h-4" />
+                  <span className="text-xs font-bold">مكان الأرشفة:</span>
+                </div>
+                <div className="mt-1 text-xs text-indigo-600 dark:text-indigo-400 font-medium">
+                  {c.archiveData.locationName || 'غير محدد'}
+                </div>
+                <div className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
+                  <span className="font-bold">رقم الملف:</span> {c.archiveData.fileNumber || 'غير محدد'}
+                </div>
+                {c.archiveData.archiveNotes && (
+                  <div className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
+                    <span className="font-bold">ملاحظات:</span> {c.archiveData.archiveNotes}
+                  </div>
+                )}
+              </div>
+            )}
+            
             <div className="flex items-start gap-3 mb-3">
               <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg">
                 <Folder className="w-6 h-6" />
@@ -372,19 +607,25 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">تاريخ الإغلاق:</span>
-                <span className="font-mono">{c.status === 'مغلقة' ? '2023-12-01' : '-'}</span>
+                <span className="font-mono">
+                  {c.closedAt ? new Date(c.closedAt).toLocaleDateString('ar-SA', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                  }) : (c.status === 'مغلقة' || c.status === 'closed' ? 'غير محدد' : '-')}
+                </span>
               </div>
-              {c.archiveData && (
-                <div className="flex justify-between bg-slate-50 dark:bg-slate-700/50 p-2 rounded border border-slate-100 dark:border-slate-700">
-                  <span className="text-slate-400 flex items-center gap-1"><Box className="w-3 h-3"/> الموقع:</span>
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400">{c.archiveData.boxNumber}</span>
-                </div>
-              )}
             </div>
 
             <div className="flex gap-2 pt-3 border-t border-slate-100 dark:border-slate-700">
               <button 
-                onClick={() => window.open(`/cases/${c.id}`, '_blank')}
+                onClick={() => {
+                  if (onCaseClick) {
+                    onCaseClick(c.id);
+                  } else if (onNavigate) {
+                    onNavigate(`cases/${c.id}`);
+                  }
+                }}
                 className="flex-1 py-1.5 bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
               >
                 عرض الملف
@@ -468,15 +709,21 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {locations.map(loc => (
-                <tr key={loc.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-slate-800 dark:text-slate-200">
+              {getHierarchicalLocations().map(loc => (
+                <tr key={loc.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-slate-800 dark:text-slate-200 ${loc.level > 0 ? 'bg-slate-50/50 dark:bg-slate-800/50' : ''}`}>
                   <td className="p-4 font-bold flex items-center gap-2">
+                    <span className={`${loc.level > 0 ? 'text-slate-400' : ''}`}>{loc.indent}</span>
                     {loc.type === 'room' ? <MapPin className="w-4 h-4 text-slate-400"/> : loc.type === 'box' ? <Box className="w-4 h-4 text-amber-500"/> : <Folder className="w-4 h-4 text-blue-500"/>}
-                    {loc.name}
+                    <span className={`${loc.level > 0 ? 'text-sm' : ''}`}>{loc.name}</span>
                   </td>
                   <td className="p-4 text-slate-500 dark:text-slate-400 text-xs">{loc.fullPath}</td>
                   <td className="p-4">
-                    <span className="px-2 py-1 bg-slate-100 dark:bg-slate-600 rounded text-xs font-bold text-slate-600 dark:text-slate-300">
+                    <span className={`px-2 py-1 rounded text-xs font-bold ${
+                      loc.type === 'room' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 
+                      loc.type === 'cabinet' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
+                      loc.type === 'shelf' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
+                      'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    }`}>
                       {loc.type === 'room' ? 'غرفة' : loc.type === 'cabinet' ? 'دولاب' : loc.type === 'shelf' ? 'رف' : 'صندوق'}
                     </span>
                   </td>
@@ -501,7 +748,10 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase }) =
                             type: loc.type,
                             fullPath: loc.fullPath,
                             capacity: loc.capacity,
-                            description: loc.description || ''
+                            description: loc.description || '',
+                            roomId: '',
+                            cabinetId: '',
+                            shelfId: ''
                           });
                           setIsLocationModalOpen(true);
                         }}
