@@ -908,6 +908,16 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
           <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <Clock className="w-5 h-5 text-slate-500" /> طلبات استعارة الملفات
           </h3>
+          <button 
+            onClick={() => {
+              setSelectedCase(null);
+              setRequestForm({ caseId: '', notes: '' });
+              setIsRequestModalOpen(true);
+            }}
+            className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 flex items-center gap-1 shadow-sm"
+          >
+            <Plus className="w-3 h-3" /> طلب جديد
+          </button>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-right text-sm">
@@ -1229,6 +1239,80 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
 
       {/* Modals */}
       {isLocationModalOpen && renderLocationModal()}
+      
+      {/* Request Modal */}
+      {isRequestModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-700">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">طلب استعارة جديد</h3>
+                <button 
+                  onClick={() => setIsRequestModalOpen(false)}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"
+                >
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  القضية
+                </label>
+                <select
+                  value={requestForm.caseId}
+                  onChange={(e) => {
+                    const caseId = e.target.value;
+                    setRequestForm(prev => ({ ...prev, caseId }));
+                    const selectedCase = cases.find(c => c.id === caseId);
+                    setSelectedCase(selectedCase || null);
+                  }}
+                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200"
+                  required
+                >
+                  <option value="">اختر القضية</option>
+                  {cases.filter(c => c.archiveData).map(caseItem => (
+                    <option key={caseItem.id} value={caseItem.id}>
+                      {caseItem.caseNumber} - {caseItem.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  ملاحظات
+                </label>
+                <textarea
+                  value={requestForm.notes}
+                  onChange={(e) => setRequestForm(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="أدخل أي ملاحظات إضافية..."
+                  rows={3}
+                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 resize-none"
+                />
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3">
+              <button 
+                onClick={() => setIsRequestModalOpen(false)}
+                className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg font-medium"
+              >
+                إلغاء
+              </button>
+              <button 
+                onClick={addRequest}
+                disabled={!requestForm.caseId}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                إرسال الطلب
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
