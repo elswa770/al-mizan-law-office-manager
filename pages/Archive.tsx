@@ -54,6 +54,11 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
   const [requests, setRequests] = useState<ArchiveRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Advanced Search States
+  const [searchRequestTerm, setSearchRequestTerm] = useState('');
+  const [requestStatusFilter, setRequestStatusFilter] = useState('all');
+  const [requestDateFilter, setRequestDateFilter] = useState('');
+
   // Modal States
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
@@ -100,15 +105,6 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
         setRooms(locationsData.filter(loc => loc.type === ArchiveLocationType.ROOM));
         setCabinets(locationsData.filter(loc => loc.type === ArchiveLocationType.CABINET));
         setShelves(locationsData.filter(loc => loc.type === ArchiveLocationType.SHELF));
-
-        // Load requests
-        const requestsQuery = query(collection(db, 'archiveRequests'), orderBy('requestDate', 'desc'));
-        const requestsSnapshot = await getDocs(requestsQuery);
-        const requestsData = requestsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as ArchiveRequest));
-        setRequests(requestsData);
       } catch (error) {
         console.error('Error loading archive data:', error);
       } finally {
@@ -117,6 +113,50 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
     };
 
     loadData();
+  }, []);
+
+  // Real-time listener for requests
+  useEffect(() => {
+    const requestsQuery = query(collection(db, 'archiveRequests'), orderBy('requestDate', 'desc'));
+    const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+      const requestsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as ArchiveRequest));
+      setRequests(requestsData);
+    }, (error) => {
+      console.error('Error listening to requests:', error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Manual refresh on component mount to ensure data is loaded
+  useEffect(() => {
+    const refreshRequests = async () => {
+      try {
+        const requestsQuery = query(collection(db, 'archiveRequests'), orderBy('requestDate', 'desc'));
+        const requestsSnapshot = await getDocs(requestsQuery);
+        const requestsData = requestsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as ArchiveRequest));
+        setRequests(requestsData);
+        console.log('Requests refreshed manually');
+      } catch (error) {
+        console.error('Error refreshing requests:', error);
+      }
+    };
+
+    // Initial load
+    refreshRequests();
+    
+    // Set up periodic refresh every 30 seconds as fallback
+    const interval = setInterval(refreshRequests, 30000);
+    
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   // Update hierarchical data when locations change
@@ -928,12 +968,102 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
     </div>
   );
 
+  // Filter requests based on search criteria
+  const filteredRequests = useMemo(() => {
+    let filtered = requests;
+
+    // Filter by search term
+    if (searchRequestTerm.trim()) {
+      filtered = filtered.filter(req => {
+        const searchTermLower = searchRequestTerm.toLowerCase();
+        const caseData = cases.find(c => c.id === req.caseId);
+        return (
+          req.id.toLowerCase().includes(searchTermLower) ||
+          req.requesterName?.toLowerCase().includes(searchTermLower) ||
+          req.notes?.toLowerCase().includes(searchTermLower) ||
+          caseData?.caseNumber?.toLowerCase().includes(searchTermLower) ||
+          caseData?.title?.toLowerCase().includes(searchTermLower)
+        );
+      });
+    }
+
+    // Filter by status
+    if (requestStatusFilter !== 'all') {
+      filtered = filtered.filter(req => req.status === requestStatusFilter);
+    }
+
+    // Filter by date
+    if (requestDateFilter.trim()) {
+      filtered = filtered.filter(req => 
+        req.requestDate.includes(requestDateFilter) ||
+        req.expectedReturnDate?.includes(requestDateFilter) ||
+        req.actualReturnDate?.includes(requestDateFilter) ||
+        req.archivedReturnDate?.includes(requestDateFilter)
+      );
+    }
+
+    return filtered;
+  }, [requests, searchRequestTerm, requestStatusFilter, requestDateFilter, cases]);
+
   const renderRequests = () => (
     <div className="space-y-6 animate-in fade-in">
+      {/* Advanced Search Bar */}
+      <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+            <input 
+              type="text" 
+              placeholder="بحث في الطلبات (رقم، اسم مقدم الطلب، ملاحظات، رقم القضية)..." 
+              value={searchRequestTerm}
+              onChange={(e) => setSearchRequestTerm(e.target.value)}
+              className="w-full pr-10 pl-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+            />
+          </div>
+          <div>
+            <select 
+              value={requestStatusFilter}
+              onChange={(e) => setRequestStatusFilter(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-4 py-2 text-sm font-bold text-slate-700 dark:text-slate-300 focus:outline-none"
+            >
+              <option value="all">جميع الحالات</option>
+              <option value="pending">قيد الانتظار</option>
+              <option value="approved">تمت الموافقة</option>
+              <option value="returned">تم الاستلام</option>
+              <option value="archived_returned">تم الإرجاع</option>
+              <option value="rejected">مرفوض</option>
+            </select>
+          </div>
+          <div className="relative">
+            <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+            <input 
+              type="date" 
+              placeholder="تصفية حسب التاريخ" 
+              value={requestDateFilter}
+              onChange={(e) => setRequestDateFilter(e.target.value)}
+              className="w-full pr-10 pl-4 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+            />
+          </div>
+          <button 
+            onClick={() => {
+              setSearchRequestTerm('');
+              setRequestStatusFilter('all');
+              setRequestDateFilter('');
+            }}
+            className="bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-700 flex items-center gap-2"
+          >
+            <X className="w-4 h-4" /> مسح الفلاتر
+          </button>
+        </div>
+      </div>
+      
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
           <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
             <Clock className="w-5 h-5 text-slate-500" /> طلبات استعارة الملفات
+            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
+              {filteredRequests.length} طلب
+            </span>
           </h3>
           <button 
             onClick={() => {
@@ -957,12 +1087,13 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
                 <th className="p-4">الحالة</th>
                 <th className="p-4">تاريخ الاستلام المتوقع</th>
                 <th className="p-4">تاريخ الاستلام الفعلي</th>
+                <th className="p-4">تاريخ الإرجاع</th>
                 <th className="p-4">ملاحظات</th>
                 <th className="p-4">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {requests.map(req => {
+              {filteredRequests.map(req => {
                 const caseData = cases.find(c => c.id === req.caseId);
                 return (
                   <tr key={req.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-slate-800 dark:text-slate-200">
@@ -1010,6 +1141,16 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
                         <span className="text-slate-400">لم يتم الاستلام</span>
                       )}
                     </td>
+                    <td className="p-4 text-xs">
+                      {req.archivedReturnDate ? (
+                        <div className="flex items-center gap-1">
+                          <Archive className="w-3 h-3 text-emerald-500" />
+                          <span className="font-mono text-emerald-600 font-bold">{req.archivedReturnDate}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">لم يتم الإرجاع</span>
+                      )}
+                    </td>
                     <td className="p-4 text-xs text-slate-500 dark:text-slate-400">{req.notes}</td>
                     <td className="p-4">
                       {req.status === 'pending' && (
@@ -1027,14 +1168,25 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
                             <XCircle className="w-3 h-3" /> رفض
                           </button>
                           <button 
-                            onClick={() => {
+                            onClick={async () => {
                               // Set expected return date
                               const returnDate = prompt('أدخل تاريخ الاستلام المتوقع (YYYY-MM-DD):', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
                               if (returnDate) {
-                                updateDoc(doc(db, 'archiveRequests', req.id), {
-                                  expectedReturnDate: returnDate
-                                });
-                                alert('تم تحديد تاريخ الاستلام المتوقع');
+                                try {
+                                  await updateDoc(doc(db, 'archiveRequests', req.id), {
+                                    expectedReturnDate: returnDate
+                                  });
+                                  
+                                  // Update local state
+                                  setRequests(prev => prev.map(request => 
+                                    request.id === req.id ? { ...request, expectedReturnDate: returnDate } : request
+                                  ));
+                                  
+                                  alert('تم تحديد تاريخ الاستلام المتوقع');
+                                } catch (error) {
+                                  console.error('Error setting return date:', error);
+                                  alert('حدث خطأ أثناء تحديد التاريخ');
+                                }
                               }
                             }}
                             className="px-3 py-1 bg-amber-600 text-white rounded text-xs font-bold hover:bg-amber-700 flex items-center gap-1"
@@ -1073,14 +1225,25 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
                             <ArrowDownLeft className="w-3 h-3" /> استلام
                           </button>
                           <button 
-                            onClick={() => {
+                            onClick={async () => {
                               // Extend return date
                               const newDate = prompt('أدخل تاريخ الاستلام الجديد (YYYY-MM-DD):', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
                               if (newDate) {
-                                updateDoc(doc(db, 'archiveRequests', req.id), {
-                                  expectedReturnDate: newDate
-                                });
-                                alert('تم تمديد تاريخ الاستلام');
+                                try {
+                                  await updateDoc(doc(db, 'archiveRequests', req.id), {
+                                    expectedReturnDate: newDate
+                                  });
+                                  
+                                  // Update local state
+                                  setRequests(prev => prev.map(request => 
+                                    request.id === req.id ? { ...request, expectedReturnDate: newDate } : request
+                                  ));
+                                  
+                                  alert('تم تمديد تاريخ الاستلام');
+                                } catch (error) {
+                                  console.error('Error extending return date:', error);
+                                  alert('حدث خطأ أثناء تمديد التاريخ');
+                                }
                               }
                             }}
                             className="px-3 py-1 bg-purple-600 text-white rounded text-xs font-bold hover:bg-purple-700 flex items-center gap-1"
