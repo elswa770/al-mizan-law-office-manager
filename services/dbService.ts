@@ -15,7 +15,7 @@ import {
   serverTimestamp
 } from "firebase/firestore";
 import { db } from "./firebaseConfig";
-import { Client, Case, Hearing, Task, ActivityLog, AppUser, LegalReference, WorkLocation } from "../types";
+import { Client, Case, Hearing, Task, ActivityLog, AppUser, LegalReference, WorkLocation, Lawyer, LawyerDocument, LawyerPerformance } from "../types";
 
 // --- Clients ---
 export const getClients = async (): Promise<Client[]> => {
@@ -291,4 +291,82 @@ export const updateLocation = async (id: string, location: Partial<WorkLocation>
 
 export const deleteLocation = async (id: string) => {
   await deleteDoc(doc(db, "locations", id));
+};
+
+// --- Lawyers ---
+export const getLawyers = async (): Promise<Lawyer[]> => {
+  const querySnapshot = await getDocs(collection(db, "lawyers"));
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lawyer));
+};
+
+export const getLawyer = async (id: string): Promise<Lawyer | null> => {
+  const docRef = doc(db, "lawyers", id);
+  const docSnap = await getDoc(docRef);
+  return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as Lawyer : null;
+};
+
+export const createLawyer = async (lawyer: Omit<Lawyer, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+  const docRef = await addDoc(collection(db, "lawyers"), {
+    ...lawyer,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return docRef.id;
+};
+
+export const updateLawyer = async (id: string, lawyer: Partial<Lawyer>): Promise<void> => {
+  const docRef = doc(db, "lawyers", id);
+  const cleanLawyer = cleanObject(lawyer);
+  await updateDoc(docRef, {
+    ...cleanLawyer,
+    updatedAt: serverTimestamp()
+  });
+};
+
+export const deleteLawyer = async (id: string): Promise<void> => {
+  await deleteDoc(doc(db, "lawyers", id));
+};
+
+export const getLawyerDocuments = async (lawyerId: string): Promise<LawyerDocument[]> => {
+  const q = query(collection(db, "lawyerDocuments"), where("lawyerId", "==", lawyerId));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LawyerDocument));
+};
+
+export const uploadLawyerDocument = async (document: Omit<LawyerDocument, 'id'>): Promise<string> => {
+  const docRef = await addDoc(collection(db, "lawyerDocuments"), document);
+  return docRef.id;
+};
+
+export const deleteLawyerDocument = async (id: string): Promise<void> => {
+  await deleteDoc(doc(db, "lawyerDocuments", id));
+};
+
+export const getLawyerPerformance = async (lawyerId: string): Promise<LawyerPerformance[]> => {
+  const q = query(collection(db, "lawyerPerformance"), where("lawyerId", "==", lawyerId));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as LawyerPerformance));
+};
+
+export const updateLawyerPerformance = async (id: string, performance: Partial<LawyerPerformance>): Promise<void> => {
+  const docRef = doc(db, "lawyerPerformance", id);
+  const cleanPerformance = cleanObject(performance);
+  await updateDoc(docRef, cleanPerformance);
+};
+
+// Real-time listeners for lawyers
+export const subscribeToLawyers = (callback: (lawyers: Lawyer[]) => void) => {
+  const q = query(collection(db, "lawyers"), orderBy("name"));
+  return onSnapshot(q, (snapshot) => {
+    const lawyers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lawyer));
+    callback(lawyers);
+  });
+};
+
+export const subscribeToLawyerDocuments = (lawyerId: string, callback: (documents: LawyerDocument[]) => void) => {
+  const q = query(collection(db, "lawyerDocuments"), where("lawyerId", "==", lawyerId));
+  return onSnapshot(q, (snapshot) => {
+    const documents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LawyerDocument));
+    callback(documents);
+  });
 };

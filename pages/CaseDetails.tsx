@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Case, Client, Hearing, CaseStatus, CaseDocument, FinancialTransaction, PaymentMethod } from '../types';
+import { Case, Client, Hearing, CaseStatus, CaseDocument, FinancialTransaction, PaymentMethod, Lawyer } from '../types';
 import { ArrowRight, Edit3, Calendar, FileText, Briefcase, MapPin, User, Shield, Save, X, Activity, DollarSign, Clock, CheckCircle, AlertCircle, Phone, Gavel, MoreVertical, Plus, Upload, FileCheck, Eye, Trash2, Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, Calculator, Edit, Users, Cloud, Download } from 'lucide-react';
 import { googleDriveService } from '../services/googleDriveService';
 
@@ -8,15 +8,18 @@ interface CaseDetailsProps {
   caseId: string;
   cases: Case[];
   clients: Client[];
+  lawyers: Lawyer[];
   hearings: Hearing[];
   onBack: () => void;
   onAddHearing?: (hearing: Hearing) => void;
   onUpdateCase?: (updatedCase: Case) => void;
   onUpdateHearing?: (hearing: Hearing) => void;
+  onDeleteHearing?: (hearingId: string) => void;
   onClientClick?: (clientId: string) => void;
+  readOnly?: boolean;
 }
 
-const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, hearings, onBack, onAddHearing, onUpdateCase, onUpdateHearing, onClientClick }) => {
+const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, lawyers, hearings, onBack, onAddHearing, onUpdateCase, onUpdateHearing, onDeleteHearing, onClientClick, readOnly = false }) => {
   const currentCase = cases.find(c => c.id === caseId);
   const [activeTab, setActiveTab] = useState<'overview' | 'hearings' | 'documents' | 'finance'>('overview');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -512,7 +515,7 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                 </div>
                 <div className="flex justify-between items-center text-sm">
                    <span className="text-slate-500 dark:text-slate-400">المحامي المسؤول</span>
-                   <span className="font-medium text-slate-800 dark:text-white">{currentCase.assignedLawyerId || 'غير معين'}</span>
+                   <span className="font-medium text-slate-800 dark:text-white">{currentCase.assignedLawyerName || 'غير معين'}</span>
                 </div>
              </div>
           </div>
@@ -897,13 +900,21 @@ const CaseDetails: React.FC<CaseDetailsProps> = ({ caseId, cases, clients, heari
                     </div>
                     <div>
                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">المحامي المسؤول</label>
-                       <input 
-                          type="text" 
+                       <select 
                           value={editCaseData.assignedLawyerId || ''} 
-                          onChange={e => setEditCaseData({...editCaseData, assignedLawyerId: e.target.value})} 
+                          onChange={e => {
+                            const selectedLawyer = lawyers.find(l => l.id === e.target.value);
+                            setEditCaseData({
+                              ...editCaseData, 
+                              assignedLawyerId: e.target.value,
+                              assignedLawyerName: selectedLawyer ? selectedLawyer.name : ''
+                            });
+                          }}
                           className="w-full border p-2.5 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" 
-                          placeholder="اكتب اسم المحامي المسؤول..."
-                       />
+                       >
+                          <option value="">اختر المحامي المسؤول...</option>
+                          {lawyers.map(lawyer => <option key={lawyer.id} value={lawyer.id}>{lawyer.name}</option>)}
+                       </select>
                     </div>
 
                     {/* Opponent Editing Fields */}

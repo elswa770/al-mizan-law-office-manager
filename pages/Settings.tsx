@@ -28,6 +28,7 @@ interface SettingsProps {
   hearings?: Hearing[];
   tasks?: Task[];
   references?: LegalReference[];
+  activities?: any[];
   onRestoreData?: (data: any) => void; 
   readOnly?: boolean;
 }
@@ -41,6 +42,7 @@ const MODULES = [
   { id: 'tasks', label: 'إدارة المهام' }, 
   { id: 'documents', label: 'الأرشيف والمستندات' },
   { id: 'archive', label: 'إدارة الأرشيف' }, // Added Archive module
+  { id: 'lawyers', label: 'إدارة المحامين' }, // Added Lawyers module
   { id: 'generator', label: 'منشئ العقود' }, // Added
   { id: 'fees', label: 'الحسابات (الإيرادات)' },
   { id: 'expenses', label: 'المصروفات الإدارية' },

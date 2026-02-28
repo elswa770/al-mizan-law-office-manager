@@ -115,6 +115,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activePage, onNavigate, notif
       items: [
         { id: 'documents', label: 'المستندات', icon: File },
         { id: 'archive', label: 'إدارة الأرشيف', icon: Archive },
+        { id: 'lawyers', label: 'إدارة المحامين', icon: Users },
         { id: 'fees', label: 'الأتعاب والمصروفات', icon: Wallet },
         { id: 'reports', label: 'التقارير', icon: BarChart3 },
       ]

@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { Lawyer, LawyerStatus, LawyerSpecialization, LawyerRole } from './types';
+import { createLawyer, updateLawyer, deleteLawyer, getLawyers } from './services/dbservice';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Cases from './pages/Cases';
@@ -14,6 +16,8 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Tasks from './pages/Tasks';
 import Locations from './pages/Locations';
+import Lawyers from './pages/Lawyers';
+import LawyerDetails from './pages/LawyerDetails';
 const Settings = lazy(() => import('./pages/Settings'));
 const AIAssistant = lazy(() => import('./pages/AIAssistant'));
 const DocumentGenerator = lazy(() => import('./pages/DocumentGenerator'));
@@ -50,6 +54,7 @@ const getDefaultPermissions = () => [
   { moduleId: 'tasks', access: 'read' as const },
   { moduleId: 'documents', access: 'read' as const },
   { moduleId: 'archive', access: 'read' as const }, // Added archive permission
+  { moduleId: 'lawyers', access: 'read' as const }, // Added lawyers permission
   { moduleId: 'fees', access: 'read' as const },
   { moduleId: 'expenses', access: 'none' as const },
   { moduleId: 'reports', access: 'none' as const },
@@ -74,6 +79,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedLawyerId, setSelectedLawyerId] = useState<string | null>(null);
+  const [lawyers, setLawyers] = useState<Lawyer[]>([]);
   
   // Data State
   const [cases, setCases] = useState<Case[]>([]);
@@ -200,25 +207,30 @@ function App() {
     }
 
     const loadData = async () => {
+      if (!isAuthenticated || !currentUser) return;
+      
+      setLoading(true);
+      setError(null);
+      
       try {
-        setLoading(true);
-        setError(null);
+        console.log('🔄 App.tsx - Starting data load for user:', currentUser.email);
         
-        // Load all data in parallel
         const [
           casesData,
           hearingsData,
           clientsData,
           tasksData,
           activitiesData,
-          usersData
+          usersData,
+          lawyersData
         ] = await Promise.all([
           getCases(),
           getHearings(),
           getClients(),
           getTasks(),
           getActivities(),
-          getAppUsers()
+          getAppUsers(),
+          getLawyers()
         ]);
         
         setCases(casesData);
@@ -227,6 +239,7 @@ function App() {
         setTasks(tasksData);
         setActivities(activitiesData);
         setUsers(usersData);
+        setLawyers(lawyersData);
         // References will be loaded separately in LegalReferences page
         setReferences([]);
         
@@ -315,6 +328,75 @@ function App() {
     setCurrentPage('clients');
   };
 
+  const handleBackToLawyers = () => {
+    setSelectedLawyerId(null);
+    setCurrentPage('lawyers');
+  };
+
+  // Lawyer management functions
+  const handleAddLawyer = async (lawyer: Lawyer) => {
+    try {
+      // Save to Firebase
+      const lawyerData = {
+        name: lawyer.name,
+        email: lawyer.email,
+        phone: lawyer.phone,
+        nationalId: lawyer.nationalId || '',
+        barNumber: lawyer.barNumber || '',
+        barRegistrationNumber: lawyer.barRegistrationNumber || '',
+        barLevel: lawyer.barLevel || '',
+        specialization: (lawyer.specialization || 'عام') as LawyerSpecialization,
+        role: (lawyer.role || 'محامي') as LawyerRole,
+        status: (lawyer.status || 'نشط') as LawyerStatus,
+        joinDate: lawyer.joinDate || '',
+        officeLocation: lawyer.officeLocation || '',
+        bio: lawyer.bio || '',
+        education: lawyer.education || '',
+        experience: lawyer.experience || 0,
+        languages: lawyer.languages || [],
+        casesHandled: lawyer.casesHandled || 0,
+        successRate: lawyer.successRate || 0,
+        hourlyRate: lawyer.hourlyRate || 0,
+        profileImage: lawyer.profileImage || ''
+      };
+      
+      const docId = await createLawyer(lawyerData);
+      const newLawyer = { ...lawyer, id: docId };
+      
+      // Update local state
+      setLawyers(prev => [...prev, newLawyer]);
+      console.log('Lawyer added to Firebase:', newLawyer);
+    } catch (error) {
+      console.error('Error adding lawyer to Firebase:', error);
+    }
+  };
+
+  const handleUpdateLawyer = async (lawyer: Lawyer) => {
+    try {
+      // Update in Firebase
+      await updateLawyer(lawyer.id, lawyer);
+      
+      // Update local state
+      setLawyers(prev => prev.map(l => l.id === lawyer.id ? lawyer : l));
+      console.log('Lawyer updated in Firebase:', lawyer);
+    } catch (error) {
+      console.error('Error updating lawyer in Firebase:', error);
+    }
+  };
+
+  const handleDeleteLawyer = async (lawyerId: string) => {
+    try {
+      // Delete from Firebase
+      await deleteLawyer(lawyerId);
+      
+      // Update local state
+      setLawyers(prev => prev.filter(l => l.id !== lawyerId));
+      console.log('Lawyer deleted from Firebase:', lawyerId);
+    } catch (error) {
+      console.error('Error deleting lawyer from Firebase:', error);
+    }
+  };
+
   const handleAddCase = async (newCase: Omit<Case, 'id'>) => {
     try {
       console.log('🆕 App.tsx - handleAddCase called with:', newCase);
@@ -327,16 +409,22 @@ function App() {
       
       if (existingCase) {
         console.warn('⚠️ App.tsx - Case already exists:', existingCase);
-        setError('هذه القضية موجودة بالفعل');
         return;
       }
-      
-      const caseId = await addCase(newCase);
+
+      // إضافة اسم المحامي إذا تم اختياره
+      const caseData = {
+        ...newCase,
+        assignedLawyerName: newCase.assignedLawyerId ? 
+          (lawyers.find(l => l.id === newCase.assignedLawyerId)?.name || '') : ''
+      };
+
+      const caseId = await addCase(caseData);
       console.log('✅ App.tsx - Case added with ID:', caseId);
       
       // إضافة القضية الجديدة إلى الحالة المحلية مع الـ ID الصحيح
       setCases(prev => {
-        const updatedCases = [...prev, { ...newCase, id: caseId }];
+        const updatedCases = [...prev, { ...caseData, id: caseId }];
         console.log('📝 App.tsx - Updated cases array after add:', updatedCases);
         return updatedCases;
       });
@@ -345,12 +433,11 @@ function App() {
       await handleAddActivity({
         action: 'إضافة قضية جديدة',
         target: newCase.title,
-        user: currentUser?.name || 'مستخدم',
         timestamp: new Date().toISOString()
       });
-    } catch (err) {
-      console.error('Error adding case:', err);
-      setError('فشل في إضافة القضية');
+      
+    } catch (error) {
+      console.error('❌ App.tsx - Error adding case:', error);
     }
   };
 
@@ -831,6 +918,7 @@ function App() {
     // Map detail pages to their parent module
     if (currentPage === 'case-details') moduleId = 'cases';
     if (currentPage === 'client-details') moduleId = 'clients';
+    if (currentPage === 'lawyer-details') moduleId = 'lawyers';
     
     // Special handling for shared modules
     if (currentPage === 'fees') {
@@ -861,6 +949,7 @@ function App() {
         return <Cases 
           cases={cases}
           clients={clients}
+          lawyers={lawyers}
           onCaseClick={handleCaseClick} 
           onAddCase={handleAddCase}
           readOnly={isReadOnly('cases')}
@@ -941,6 +1030,28 @@ function App() {
         );
       case 'locations':
         return <Locations readOnly={isReadOnly('locations')} />;
+      case 'lawyers':
+        return <Lawyers 
+          lawyers={lawyers} 
+          onAddLawyer={handleAddLawyer}
+          onUpdateLawyer={handleUpdateLawyer}
+          onDeleteLawyer={handleDeleteLawyer}
+          onLawyerClick={(lawyerId) => {
+            setSelectedLawyerId(lawyerId);
+            setCurrentPage('lawyer-details');
+          }}
+          readOnly={isReadOnly('lawyers')}
+        />;
+      case 'lawyer-details':
+        if (!selectedLawyerId) return <Lawyers lawyers={lawyers} onAddLawyer={handleAddLawyer} onUpdateLawyer={handleUpdateLawyer} onDeleteLawyer={handleDeleteLawyer} onLawyerClick={setSelectedLawyerId} readOnly={isReadOnly('lawyers')} />;
+        return <LawyerDetails 
+          lawyerId={selectedLawyerId} 
+          lawyers={lawyers}
+          cases={cases}
+          onUpdateLawyer={handleUpdateLawyer}
+          onBack={handleBackToLawyers}
+          readOnly={isReadOnly('lawyers')}
+        />;
       case 'calculators':
         return (
           <Suspense fallback={
@@ -1019,18 +1130,19 @@ function App() {
       case 'case-details':
         if (!selectedCaseId) return <Dashboard cases={cases} clients={clients} hearings={hearings} />;
         return <CaseDetails 
-          caseId={selectedCaseId} 
-          cases={cases} 
-          clients={clients} 
-          hearings={hearings} 
-          onBack={handleBackToCases}
-          onUpdateCase={handleUpdateCase}
-          onAddHearing={handleAddHearing}
-          onUpdateHearing={handleUpdateHearing}
-          onDeleteHearing={handleDeleteHearing}
-          onClientClick={handleClientClick}
-          readOnly={isReadOnly('cases')}
-        />;
+              caseId={selectedCaseId}
+              cases={cases}
+              clients={clients}
+              lawyers={lawyers}
+              hearings={hearings}
+              onBack={handleBackToCases}
+              onUpdateCase={handleUpdateCase}
+              onAddHearing={handleAddHearing}
+              onUpdateHearing={handleUpdateHearing}
+              onDeleteHearing={handleDeleteHearing}
+              onClientClick={handleClientClick}
+              readOnly={isReadOnly('cases')}
+            />;
       case 'client-details':
         if (!selectedClientId) return <Clients clients={clients} cases={cases} hearings={hearings} onClientClick={handleClientClick} />;
         return <ClientDetails 

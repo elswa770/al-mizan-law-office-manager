@@ -1,18 +1,18 @@
 
 import React, { useState } from 'react';
-import { Case, Client, CaseStatus, CourtType, LawBranch } from '../types';
+import { Case, Client, CaseStatus, CourtType, LawBranch, Lawyer } from '../types';
 import { Briefcase, Search, Plus, Filter, User, Calendar, MapPin, ArrowUpRight, X, Save, Gavel, LayoutGrid, List, Users, Scale } from 'lucide-react';
-import { MOCK_USERS } from '../services/mockData';
 
 interface CasesProps {
   cases: Case[];
   clients: Client[];
+  lawyers: Lawyer[];
   onCaseClick: (caseId: string) => void;
   onAddCase?: (newCase: Omit<Case, 'id'>) => void;
   readOnly?: boolean;
 }
 
-const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, readOnly = false }) => {
+const Cases: React.FC<CasesProps> = ({ cases, clients, lawyers, onCaseClick, onAddCase, readOnly = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -36,6 +36,7 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
     description: '',
     caseType: undefined,
     assignedLawyerId: '',
+    assignedLawyerName: '',
     filingDate: new Date().toISOString().split('T')[0]
   });
 
@@ -99,13 +100,8 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
 
   const getLawyerName = (id?: string) => {
     if (!id) return 'غير معين';
-    // If the field contains a name directly (not an ID), return it
-    if (!MOCK_USERS.some(u => u.id === id)) {
-      return id;
-    }
-    // Otherwise, look up by ID (for backward compatibility)
-    const user = MOCK_USERS.find(u => u.id === id);
-    return user ? user.name : 'غير معروف';
+    const lawyer = lawyers.find(l => l.id === id);
+    return lawyer ? lawyer.name : id;
   };
 
   const getCaseTypeArabic = (type?: string) => {
@@ -503,7 +499,17 @@ const Cases: React.FC<CasesProps> = ({ cases, clients, onCaseClick, onAddCase, r
 
                 <div>
                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">المحامي المسؤول</label>
-                   <input type="text" className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={formData.assignedLawyerId || ''} onChange={e => setFormData({...formData, assignedLawyerId: e.target.value})} placeholder="اكتب اسم المحامي المسؤول..." />
+                   <select className="w-full border p-2 rounded-lg bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-white" value={formData.assignedLawyerId || ''} onChange={e => {
+                     const selectedLawyer = lawyers.find(l => l.id === e.target.value);
+                     setFormData({
+                       ...formData, 
+                       assignedLawyerId: e.target.value,
+                       assignedLawyerName: selectedLawyer ? selectedLawyer.name : ''
+                     });
+                   }}>
+                      <option value="">اختر المحامي المسؤول...</option>
+                      {lawyers.map(lawyer => <option key={lawyer.id} value={lawyer.id}>{lawyer.name}</option>)}
+                   </select>
                 </div>
               </div>
               

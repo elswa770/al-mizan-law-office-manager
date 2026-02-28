@@ -50,6 +50,41 @@ export enum ArchiveRequestStatus {
   ARCHIVED_RETURNED = 'archived_returned'
 }
 
+export enum LawyerStatus {
+  ACTIVE = 'نشط',
+  INACTIVE = 'غير نشط',
+  ON_LEAVE = 'في إجازة',
+  SUSPENDED = 'موقوف'
+}
+
+export enum BarLevel {
+  GENERAL = 'جدول عام',
+  PRIMARY = 'محاكم ابتدائية',
+  APPEAL = 'استئناف عالي ومجلس دولة',
+  CASSATION = 'نقض'
+}
+
+export enum LawyerSpecialization {
+  GENERAL = 'عام',
+  CIVIL = 'مدني',
+  CRIMINAL = 'جنائي',
+  FAMILY = 'أسرة',
+  COMMERCIAL = 'تجاري',
+  LABOR = 'عمالي',
+  ADMINISTRATIVE = 'مجلس دولة',
+  ECONOMIC = 'اقتصادي'
+}
+
+export enum LawyerRole {
+  SENIOR_PARTNER = 'شريك أول',
+  PARTNER = 'شريك',
+  SENIOR_LAWYER = 'محامي أول',
+  LAWYER = 'محامي',
+  JUNIOR_LAWYER = 'محامي مبتدئ',
+  LEGAL_ADVISOR = 'مستشار قانوني',
+  LEGAL_ASSISTANT = 'مساعد قانوني'
+}
+
 export enum ArchiveLocationType {
   ROOM = 'room',
   CABINET = 'cabinet',
@@ -232,6 +267,7 @@ export interface Case {
   startDate?: string;
   // New fields for advanced case tracking
   assignedLawyerId?: string;
+  assignedLawyerName?: string; // اسم المحامي المسؤول
   caseType?: LawBranch;
   filingDate?: string;
   hearings?: Hearing[];
@@ -479,6 +515,59 @@ export interface ArchiveRequest {
   expectedReturnDate?: string;
   actualReturnDate?: string;
   archivedReturnDate?: string;
+}
+
+// Lawyer Management Interfaces
+export interface Lawyer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  nationalId: string;
+  barNumber: string;
+  barRegistrationNumber?: string; // رقم القيد في النقابة
+  barLevel?: BarLevel; // درجة القيد بالنقابة
+  specialization: LawyerSpecialization;
+  role: LawyerRole;
+  status: LawyerStatus;
+  joinDate: string;
+  officeLocation?: string;
+  bio?: string;
+  education?: string;
+  experience?: number;
+  languages?: string[];
+  casesHandled?: number;
+  successRate?: number;
+  hourlyRate?: number;
+  profileImage?: string;
+  documents?: LawyerDocument[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LawyerDocument {
+  id: string;
+  lawyerId: string;
+  documentType: 'cv' | 'certificate' | 'license' | 'contract' | 'other';
+  documentName: string;
+  documentUrl: string;
+  uploadDate: string;
+  uploadedBy: string;
+  verified: boolean;
+  notes?: string;
+}
+
+export interface LawyerPerformance {
+  lawyerId: string;
+  period: string; // e.g., "2024-Q1"
+  casesHandled: number;
+  casesWon: number;
+  casesLost: number;
+  casesPending: number;
+  totalRevenue: number;
+  averageCaseDuration: number;
+  clientSatisfactionScore: number;
+  billableHours: number;
 }
 
 export interface ArchiveData {
