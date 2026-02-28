@@ -484,8 +484,15 @@ function App() {
 
   const handleAddHearing = async (newHearing: Hearing) => {
     try {
-      const hearingId = await addHearing(newHearing);
-      setHearings(prev => [{ ...newHearing, id: hearingId }, ...prev]);
+      // إضافة اسم المحامي إذا تم اختياره
+      const hearingData = {
+        ...newHearing,
+        assignedLawyerName: newHearing.assignedLawyerId ? 
+          (lawyers.find(l => l.id === newHearing.assignedLawyerId)?.name || '') : ''
+      };
+
+      const hearingId = await addHearing(hearingData);
+      setHearings(prev => [{ ...hearingData, id: hearingId }, ...prev]);
       
       // Log activity
       const caseTitle = cases.find(c => c.id === newHearing.caseId)?.title || 'قضية غير معروفة';
@@ -968,6 +975,7 @@ function App() {
         return <Hearings 
           hearings={hearings} 
           cases={cases} 
+          lawyers={lawyers}
           onCaseClick={handleCaseClick}
           onAddHearing={handleAddHearing}
           onUpdateHearing={handleUpdateHearing}
@@ -1043,13 +1051,15 @@ function App() {
           readOnly={isReadOnly('lawyers')}
         />;
       case 'lawyer-details':
-        if (!selectedLawyerId) return <Lawyers lawyers={lawyers} onAddLawyer={handleAddLawyer} onUpdateLawyer={handleUpdateLawyer} onDeleteLawyer={handleDeleteLawyer} onLawyerClick={setSelectedLawyerId} readOnly={isReadOnly('lawyers')} />;
+        if (!selectedLawyerId) return <Lawyers lawyers={lawyers} />;
         return <LawyerDetails 
-          lawyerId={selectedLawyerId} 
+          lawyerId={selectedLawyerId}
           lawyers={lawyers}
           cases={cases}
-          onUpdateLawyer={handleUpdateLawyer}
+          hearings={hearings}
           onBack={handleBackToLawyers}
+          onCaseClick={handleCaseClick}
+          onUpdateLawyer={handleUpdateLawyer}
           readOnly={isReadOnly('lawyers')}
         />;
       case 'calculators':

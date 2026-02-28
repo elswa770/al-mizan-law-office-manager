@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Case, Hearing, CaseStatus, HearingStatus } from '../types';
+import { Case, Hearing, CaseStatus, HearingStatus, Lawyer } from '../types';
 import { Calendar, MapPin, Gavel, AlertCircle, X, Edit3, Link as LinkIcon, ExternalLink, ChevronLeft, ChevronRight, List, LayoutGrid, Clock, Filter, Printer, Download, Plus, CheckSquare, AlignJustify, DollarSign, CalendarDays, ArrowLeftCircle, CheckCircle, FileText, Upload, Image as ImageIcon, Eye, Trash2 } from 'lucide-react';
 
 interface HearingsProps {
   hearings: Hearing[];
   cases: Case[];
+  lawyers: Lawyer[];
   onCaseClick?: (caseId: string) => void;
   onUpdateHearing?: (hearing: Hearing) => void;
   onAddHearing?: (hearing: Hearing) => void;
@@ -13,7 +14,7 @@ interface HearingsProps {
   readOnly?: boolean;
 }
 
-const Hearings: React.FC<HearingsProps> = ({ hearings, cases, onCaseClick, onUpdateHearing, onAddHearing, onDeleteHearing, readOnly = false }) => {
+const Hearings: React.FC<HearingsProps> = ({ hearings, cases, lawyers, onCaseClick, onUpdateHearing, onAddHearing, onDeleteHearing, readOnly = false }) => {
   // --- View State ---
   const [viewMode, setViewMode] = useState<'timeline' | 'table' | 'calendar'>('timeline');
   const [filterType, setFilterType] = useState<'upcoming' | 'past' | 'today'>('upcoming');
@@ -64,11 +65,19 @@ const Hearings: React.FC<HearingsProps> = ({ hearings, cases, onCaseClick, onUpd
     status: 'محددة' as HearingStatus,
     decision: '',
     rulingUrl: '',
+    assignedLawyerId: '',
+    assignedLawyerName: '',
     expenses: { amount: 0, paidBy: 'lawyer' as 'lawyer' | 'client', description: '' }
   });
 
   // --- Helpers ---
   const getCaseDetails = (caseId: string) => cases.find(c => c.id === caseId);
+  
+  const getLawyerName = (id?: string) => {
+    if (!id) return 'غير معين';
+    const lawyer = lawyers.find(l => l.id === id);
+    return lawyer ? lawyer.name : id;
+  };
   
   const parseLocalDate = (dateString: string) => {
     const [year, month, day] = dateString.split('-').map(Number);
@@ -203,6 +212,8 @@ const Hearings: React.FC<HearingsProps> = ({ hearings, cases, onCaseClick, onUpd
       status: HearingStatus.SCHEDULED,
       decision: '',
       rulingUrl: '',
+      assignedLawyerId: newHearingData.assignedLawyerId,
+      assignedLawyerName: newHearingData.assignedLawyerName,
       expenses: { amount: 0, paidBy: 'lawyer' as 'lawyer' | 'client', description: '' }
     });
 
@@ -216,6 +227,8 @@ const Hearings: React.FC<HearingsProps> = ({ hearings, cases, onCaseClick, onUpd
   status: 'محددة' as HearingStatus,
   decision: '',
   rulingUrl: '',
+  assignedLawyerId: '',
+  assignedLawyerName: '',
   expenses: { amount: 0, paidBy: 'lawyer' as 'lawyer' | 'client', description: '' }
 });
   };
@@ -659,9 +672,9 @@ const Hearings: React.FC<HearingsProps> = ({ hearings, cases, onCaseClick, onUpd
                   {wizardStep === 2 && (
                      <div className="space-y-5 animate-in fade-in slide-in-from-right-4">
                         <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800 flex items-center justify-between">
-                           <div className="flex items-center gap-3">
-                              <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                              <span className="font-bold text-blue-900 dark:text-blue-200">تحديد الجلسة القادمة تلقائياً</span>
+                           <div className="flex items-center gap-2 text-sm">
+                              <span className="text-slate-500 dark:text-slate-400">المحامي المسؤول</span>
+                              <span className="font-medium text-slate-800 dark:text-white">{getLawyerName(h.assignedLawyerId)}</span>
                            </div>
                            <label className="relative inline-flex items-center cursor-pointer">
                               <input type="checkbox" className="sr-only peer" checked={nextSessionData.createNext} onChange={e => setNextSessionData({...nextSessionData, createNext: e.target.checked})} disabled={readOnly} />
@@ -811,6 +824,24 @@ const Hearings: React.FC<HearingsProps> = ({ hearings, cases, onCaseClick, onUpd
                         <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">الوقت</label>
                         <input type="time" className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" value={newHearingData.time} onChange={e => setNewHearingData({...newHearingData, time: e.target.value})} />
                      </div>
+                  </div>
+                  <div>
+                     <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">المحامي المسؤول</label>
+                     <select 
+                        className="w-full border dark:border-slate-600 p-2 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white" 
+                        value={newHearingData.assignedLawyerId || ''} 
+                        onChange={e => {
+                          const selectedLawyer = lawyers.find(l => l.id === e.target.value);
+                          setNewHearingData({
+                            ...newHearingData, 
+                            assignedLawyerId: e.target.value,
+                            assignedLawyerName: selectedLawyer ? selectedLawyer.name : ''
+                          });
+                        }}
+                     >
+                        <option value="">اختر المحامي المسؤول...</option>
+                        {lawyers.map(lawyer => <option key={lawyer.id} value={lawyer.id}>{lawyer.name}</option>)}
+                     </select>
                   </div>
                   <div>
                      <label className="block text-sm font-medium mb-1 text-slate-700 dark:text-slate-300">المطلوب للجلسة</label>

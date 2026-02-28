@@ -295,6 +295,11 @@ export interface Hearing {
   isCompleted?: boolean;
   rulingUrl?: string;
   expenses?: HearingExpenses;
+  // Lawyer assignment fields
+  assignedLawyerId?: string; // المحامي المسؤول عن الجلسة
+  assignedLawyerName?: string; // اسم المحامي المسؤول
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Task {
