@@ -3,7 +3,7 @@ import { Case, Client, ArchiveLocation, ArchiveRequest, CaseStatus, ArchiveLocat
 import { 
   Archive, Search, Filter, Folder, Box, FileText, Clock, User, 
   MapPin, CheckCircle, XCircle, AlertCircle, ArrowUpRight, ArrowDownLeft,
-  Plus, Trash2, Edit3, QrCode, Printer, Shield, Lock, Unlock, X, Save, ChevronDown
+  Plus, Trash2, Edit3, QrCode, Printer, Shield, Lock, Unlock, X, Save, ChevronDown, Calendar
 } from 'lucide-react';
 import { 
   doc, setDoc, getDoc, collection, addDoc, updateDoc, deleteDoc, 
@@ -79,6 +79,7 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
 
   const [requestForm, setRequestForm] = useState({
     caseId: '',
+    requesterName: '',
     notes: ''
   });
 
@@ -124,6 +125,22 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
     setCabinets(locations.filter(loc => loc.type === ArchiveLocationType.CABINET));
     setShelves(locations.filter(loc => loc.type === ArchiveLocationType.SHELF));
   }, [locations]);
+
+  // Check if case is borrowed
+  const isCaseBorrowed = (caseId: string) => {
+    return requests.some(req => 
+      req.caseId === caseId && 
+      (req.status === ArchiveRequestStatus.APPROVED || req.status === ArchiveRequestStatus.RETURNED)
+    );
+  };
+
+  // Check if case is returned to archive
+  const isCaseReturnedToArchive = (caseId: string) => {
+    return requests.some(req => 
+      req.caseId === caseId && 
+      req.status === ArchiveRequestStatus.ARCHIVED_RETURNED
+    );
+  };
 
   // --- Firebase Operations ---
   const addLocation = async () => {
@@ -257,6 +274,7 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
       const newRequest: Omit<ArchiveRequest, 'id'> = {
         caseId: requestForm.caseId,
         requesterId: 'current-user', // Should come from auth context
+        requesterName: requestForm.requesterName || 'غير محدد',
         requestDate: new Date().toISOString(),
         status: ArchiveRequestStatus.PENDING,
         notes: requestForm.notes
@@ -265,7 +283,7 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
       const docRef = await addDoc(collection(db, 'archiveRequests'), newRequest);
       setRequests(prev => [...prev, { id: docRef.id, ...newRequest }]);
       setIsRequestModalOpen(false);
-      setRequestForm({ caseId: '', notes: '' });
+      setRequestForm({ caseId: '', requesterName: '', notes: '' });
       setSelectedCase(null);
       alert('تم إرسال طلب الاستعارة بنجاح');
     } catch (error) {
@@ -672,6 +690,15 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredCases.map(c => (
           <div key={c.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all group relative">
+            {/* Borrowed Ribbon */}
+            {isCaseBorrowed(c.id) && (
+              <div className="absolute top-0 right-0 w-20 h-20 overflow-hidden">
+                <div className="absolute top-2 right-[-35px] w-[140px] text-center py-1 bg-red-600 text-white text-[10px] font-bold transform rotate-45 shadow-lg">
+                  مستعارة
+                </div>
+              </div>
+            )}
+            
             <div className={`absolute top-4 left-4 px-2 py-1 rounded text-[10px] font-bold ${c.archiveData ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
               {c.archiveData ? 'مؤرشف فيزيائياً' : 'رقمي فقط'}
             </div>
@@ -911,7 +938,7 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
           <button 
             onClick={() => {
               setSelectedCase(null);
-              setRequestForm({ caseId: '', notes: '' });
+              setRequestForm({ caseId: '', requesterName: '', notes: '' });
               setIsRequestModalOpen(true);
             }}
             className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 flex items-center gap-1 shadow-sm"
@@ -928,6 +955,8 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
                 <th className="p-4">مقدم الطلب</th>
                 <th className="p-4">تاريخ الطلب</th>
                 <th className="p-4">الحالة</th>
+                <th className="p-4">تاريخ الاستلام المتوقع</th>
+                <th className="p-4">تاريخ الاستلام الفعلي</th>
                 <th className="p-4">ملاحظات</th>
                 <th className="p-4">الإجراءات</th>
               </tr>
@@ -943,49 +972,184 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
                       <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-xs font-bold">
                         <User className="w-3 h-3" />
                       </div>
-                      {req.requesterId}
+                      {req.requesterName || 'غير محدد'}
                     </td>
                     <td className="p-4 font-mono text-xs">{req.requestDate}</td>
                     <td className="p-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                         req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
                         req.status === 'pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 
+                        req.status === 'returned' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                        req.status === 'archived_returned' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
                         'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                       }`}>
-                        {req.status === 'approved' ? 'تمت الموافقة' : req.status === 'pending' ? 'قيد الانتظار' : 'مرفوض'}
+                        {req.status === 'approved' ? 'تمت الموافقة' : 
+                         req.status === 'pending' ? 'قيد الانتظار' : 
+                         req.status === 'returned' ? 'تم الاستلام' :
+                         req.status === 'archived_returned' ? 'تم الإرجاع' :
+                         'مرفوض'}
                       </span>
+                    </td>
+                    <td className="p-4 text-xs">
+                      {req.expectedReturnDate ? (
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-amber-500" />
+                          <span className="font-mono">{req.expectedReturnDate}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">غير محدد</span>
+                      )}
+                    </td>
+                    <td className="p-4 text-xs">
+                      {req.actualReturnDate ? (
+                        <div className="flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3 text-green-500" />
+                          <span className="font-mono text-green-600 font-bold">{req.actualReturnDate}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">لم يتم الاستلام</span>
+                      )}
                     </td>
                     <td className="p-4 text-xs text-slate-500 dark:text-slate-400">{req.notes}</td>
                     <td className="p-4">
                       {req.status === 'pending' && (
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <button 
                             onClick={() => updateRequestStatus(req.id, ArchiveRequestStatus.APPROVED)}
-                            className="px-3 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700"
+                            className="px-3 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 flex items-center gap-1"
                           >
-                            موافقة
+                            <CheckCircle className="w-3 h-3" /> موافقة
                           </button>
                           <button 
                             onClick={() => updateRequestStatus(req.id, ArchiveRequestStatus.REJECTED)}
-                            className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold hover:bg-red-700"
+                            className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold hover:bg-red-700 flex items-center gap-1"
                           >
-                            رفض
+                            <XCircle className="w-3 h-3" /> رفض
+                          </button>
+                          <button 
+                            onClick={() => {
+                              // Set expected return date
+                              const returnDate = prompt('أدخل تاريخ الاستلام المتوقع (YYYY-MM-DD):', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+                              if (returnDate) {
+                                updateDoc(doc(db, 'archiveRequests', req.id), {
+                                  expectedReturnDate: returnDate
+                                });
+                                alert('تم تحديد تاريخ الاستلام المتوقع');
+                              }
+                            }}
+                            className="px-3 py-1 bg-amber-600 text-white rounded text-xs font-bold hover:bg-amber-700 flex items-center gap-1"
+                          >
+                            <Calendar className="w-3 h-3" /> تحديد تاريخ
                           </button>
                         </div>
                       )}
                       {req.status === 'approved' && (
-                        <button 
-                          onClick={() => {
-                            // Mark as returned
-                            updateDoc(doc(db, 'archiveRequests', req.id), {
-                              actualReturnDate: new Date().toISOString()
-                            });
-                            alert('تم تسجيل استلام الملف بنجاح');
-                          }}
-                          className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1"
-                        >
-                          <ArrowDownLeft className="w-3 h-3" /> استلام
-                        </button>
+                        <div className="flex gap-2 flex-wrap">
+                          <button 
+                            onClick={async () => {
+                              // Mark as returned and close the request
+                              try {
+                                const updateData = {
+                                  actualReturnDate: new Date().toISOString(),
+                                  status: ArchiveRequestStatus.RETURNED
+                                };
+                                
+                                await updateDoc(doc(db, 'archiveRequests', req.id), updateData);
+                                
+                                // Update local state
+                                setRequests(prev => prev.map(request => 
+                                  request.id === req.id ? { ...request, ...updateData } : request
+                                ));
+                                
+                                alert('تم تسجيل استلام الملف وإغلاق الطلب بنجاح');
+                              } catch (error) {
+                                console.error('Error marking as returned:', error);
+                                alert('حدث خطأ أثناء تسجيل الاستلام');
+                              }
+                            }}
+                            className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={!!req.actualReturnDate}
+                          >
+                            <ArrowDownLeft className="w-3 h-3" /> استلام
+                          </button>
+                          <button 
+                            onClick={() => {
+                              // Extend return date
+                              const newDate = prompt('أدخل تاريخ الاستلام الجديد (YYYY-MM-DD):', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+                              if (newDate) {
+                                updateDoc(doc(db, 'archiveRequests', req.id), {
+                                  expectedReturnDate: newDate
+                                });
+                                alert('تم تمديد تاريخ الاستلام');
+                              }
+                            }}
+                            className="px-3 py-1 bg-purple-600 text-white rounded text-xs font-bold hover:bg-purple-700 flex items-center gap-1"
+                          >
+                            <Clock className="w-3 h-3" /> تمديد
+                          </button>
+                        </div>
+                      )}
+                      {req.status === 'returned' && (
+                        <div className="flex gap-2 flex-wrap">
+                          <button 
+                            onClick={async () => {
+                              // Return case to archive
+                              try {
+                                const updateData = {
+                                  status: ArchiveRequestStatus.ARCHIVED_RETURNED,
+                                  archivedReturnDate: new Date().toISOString()
+                                };
+                                
+                                await updateDoc(doc(db, 'archiveRequests', req.id), updateData);
+                                
+                                // Update local state
+                                setRequests(prev => prev.map(request => 
+                                  request.id === req.id ? { ...request, ...updateData } : request
+                                ));
+                                
+                                alert('تم إرجاع القضية إلى الأرشيف بنجاح');
+                              } catch (error) {
+                                console.error('Error returning case to archive:', error);
+                                alert('حدث خطأ أثناء إرجاع القضية');
+                              }
+                            }}
+                            className="px-3 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 flex items-center gap-1"
+                          >
+                            <Archive className="w-3 h-3" /> إرجاع للأرشيف
+                          </button>
+                        </div>
+                      )}
+                      {req.status === 'archived_returned' && (
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded text-xs font-bold flex items-center gap-1">
+                            <Archive className="w-3 h-3" />
+                            تم الإرجاع
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            في {req.archivedReturnDate}
+                          </span>
+                        </div>
+                      )}
+                      {req.status === 'rejected' && (
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => updateRequestStatus(req.id, ArchiveRequestStatus.PENDING)}
+                            className="px-3 py-1 bg-amber-600 text-white rounded text-xs font-bold hover:bg-amber-700 flex items-center gap-1"
+                          >
+                            <AlertCircle className="w-3 h-3" /> إعادة نظر
+                          </button>
+                        </div>
+                      )}
+                      {req.status === 'returned' && (
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded text-xs font-bold flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            تم الاستلام
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            في {req.actualReturnDate}
+                          </span>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -1279,6 +1443,20 @@ const ArchivePage: React.FC<ArchiveProps> = ({ cases, clients, onUpdateCase, onN
                     </option>
                   ))}
                 </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  اسم مقدم الطلب
+                </label>
+                <input
+                  type="text"
+                  value={requestForm.requesterName}
+                  onChange={(e) => setRequestForm(prev => ({ ...prev, requesterName: e.target.value }))}
+                  placeholder="أدخل اسم مقدم الطلب..."
+                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200"
+                  required
+                />
               </div>
               
               <div>

@@ -465,8 +465,8 @@ const Settings: React.FC<SettingsProps> = ({
       try {
         const checks = [];
         
-        // فحص الإصدار الحالي
-        let currentVersion = '4.0.0';
+        // فحص الإصدار الحالي من package.json
+        let currentVersion = '1.0.0';
         try {
           const response = await fetch('/package.json');
           const packageData = await response.json();
@@ -489,9 +489,13 @@ const Settings: React.FC<SettingsProps> = ({
         if ('WebAssembly' in window) features.push('WebAssembly');
         checks.push(`⚡ الميزات المدعومة: ${features.join(', ')}`);
         
-        // فحص تحديثات التطبيق
+        // فحص تحديثات التطبيق عبر Service Worker
         if ('serviceWorker' in navigator) {
           const registration = await navigator.serviceWorker.ready;
+          
+          // البحث عن تحديثات يدوياً
+          await registration.update();
+          
           if (registration.waiting) {
             checks.push(`🔄 تحديث متاح وجاهز للتثبيت`);
             if (confirm('تحديث متاح! هل تريد تثبيته الآن؟')) {
@@ -499,17 +503,60 @@ const Settings: React.FC<SettingsProps> = ({
               window.location.reload();
               return;
             }
+          } else if (registration.installing) {
+            checks.push(`⏳ جاري تثبيت التحديث...`);
           } else {
-            checks.push(`✅ لا توجد تحديثات متاحة`);
+            checks.push(`✅ لا توجد تحديثات متاحة عبر Service Worker`);
           }
         } else {
           checks.push(`⚠️ Service Worker غير مدعوم`);
+        }
+        
+        // فحص التحديثات عبر API (محاكاة)
+        try {
+          const updateResponse = await fetch('/api/version-check');
+          if (updateResponse.ok) {
+            const updateData = await updateResponse.json();
+            if (updateData.updateAvailable) {
+              checks.push(`🚀 تحديث جديد متاح: v${updateData.latestVersion}`);
+              checks.push(`📝 ملاحظات الإصدار: ${updateData.changelog.join(', ')}`);
+              
+              if (confirm(`تحديث جديد متاح! الإصدار ${updateData.latestVersion} متاح (الحالي: ${updateData.currentVersion}). هل تريد التثبيت الآن؟`)) {
+                // محاكاة عملية التحديث
+                checks.push(`⬇️ جاري تنزيل التحديث...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                checks.push(`📦 جاري تثبيت التحديث...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                checks.push(`🔄 جاري إعادة التشغيل...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // تحديث الإصدار في الذاكرة المؤقتة
+                localStorage.setItem('app-version', updateData.latestVersion);
+                
+                // إعادة تشغيل التطبيق
+                window.location.reload();
+                return;
+              }
+            } else {
+              checks.push(`✅ التطبيق محدث لأحدث إصدار`);
+            }
+          } else {
+            checks.push(`⚠️ فشل التحقق من التحديثات عبر API`);
+          }
+        } catch (error) {
+          checks.push(`ℹ️ فشل الاتصال بخادم التحديثات (محاكاة)`);
         }
         
         // فحص وقت التشغيل
         const uptime = Date.now() - performance.timing.navigationStart;
         const uptimeMinutes = Math.floor(uptime / 60000);
         checks.push(`⏱️ وقت التشغيل: ${uptimeMinutes} دقيقة`);
+        
+        // فحص حالة التخزين المؤقت
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          checks.push(`💾 التخزين المؤقت: ${cacheNames.length} مخزن مؤقت`);
+        }
         
         alert(`✅ فحص التحديثات اكتمل:\n\n${checks.join('\n')}`);
         

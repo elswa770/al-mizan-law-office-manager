@@ -45,7 +45,9 @@ export enum ArchiveStatus {
 export enum ArchiveRequestStatus {
   PENDING = 'pending',
   APPROVED = 'approved',
-  REJECTED = 'rejected'
+  REJECTED = 'rejected',
+  RETURNED = 'returned',
+  ARCHIVED_RETURNED = 'archived_returned'
 }
 
 export enum ArchiveLocationType {
@@ -468,6 +470,7 @@ export interface ArchiveRequest {
   id: string;
   caseId: string;
   requesterId: string;
+  requesterName: string;
   requestDate: string;
   status: ArchiveRequestStatus;
   notes?: string;
@@ -475,6 +478,7 @@ export interface ArchiveRequest {
   approvedDate?: string;
   expectedReturnDate?: string;
   actualReturnDate?: string;
+  archivedReturnDate?: string;
 }
 
 export interface ArchiveData {
