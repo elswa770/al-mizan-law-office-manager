@@ -274,6 +274,47 @@ const LawyerDetails: React.FC<LawyerDetailsProps> = ({
               )}
             </div>
           </div>
+
+          {/* Assigned Cases List */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+              <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                <Briefcase className="w-5 h-5 text-slate-500" /> القضايا المسندة
+              </h3>
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-slate-700">
+              {assignedCases.length > 0 ? assignedCases.map(c => (
+                <div key={c.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-white text-sm">{c.title}</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{c.caseNumber} • {c.court}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      c.status === 'مغلقة' ? 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 
+                      'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    }`}>
+                      {c.status}
+                    </span>
+                    {onCaseClick && (
+                      <button 
+                        onClick={() => onCaseClick(c.id)}
+                        className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-xs hover:bg-indigo-200 transition-colors"
+                        title="فتح القضية"
+                      >
+                        <FileText className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )) : (
+                <div className="p-8 text-center text-slate-400">
+                  <Briefcase className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                  <p className="text-sm">لا توجد قضايا مسندة حالياً</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
